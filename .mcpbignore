@@ -1,0 +1,18 @@
+# Source and dev files (dist/ is the runtime entry point)
+src/
+.cursor/
+*.test.ts
+
+# Git and local config
+.git/
+.DS_Store
+*.log
+.env
+.env.*
+
+# Playwright test artifacts (browsers installed via postinstall)
+playwright-report/
+test-results/
+
+# User session data (never bundle)
+.waas-mcp/

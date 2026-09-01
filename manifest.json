@@ -1,0 +1,66 @@
+{
+  "manifest_version": "0.4",
+  "name": "waas-mcp",
+  "display_name": "Work at a Startup (WaaS)",
+  "version": "0.2.0",
+  "description": "Search, inspect, and apply to YC Work at a Startup jobs from your AI assistant.",
+  "long_description": "MCP server for [Work at a Startup](https://www.workatastartup.com) — YC's job board.\n\n**Search** with structured filters (role, remote, visa, keywords). **Inspect** each application for custom questions, resume URLs, and external apply links. **Submit** with dry-run safety by default.\n\n**Before applying**, sign in once from a terminal in the extension folder:\n\n```bash\nnpm run login\n```\n\nSession is saved to `~/.waas-mcp/storage-state.json`.",
+  "author": {
+    "name": "Jason Charwin",
+    "url": "https://github.com/Thespaceblade"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Thespaceblade/waas-mcp.git"
+  },
+  "homepage": "https://github.com/Thespaceblade/waas-mcp",
+  "documentation": "https://github.com/Thespaceblade/waas-mcp#readme",
+  "support": "https://github.com/Thespaceblade/waas-mcp/issues",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/index.js"]
+    }
+  },
+  "tools": [
+    {
+      "name": "waas_auth_status",
+      "description": "Check Work at a Startup login session."
+    },
+    {
+      "name": "waas_search",
+      "description": "Search jobs with structured filters (role, remote, visa, keywords)."
+    },
+    {
+      "name": "waas_get_job",
+      "description": "Fetch full job posting by id or URL."
+    },
+    {
+      "name": "waas_get_company",
+      "description": "Fetch company profile and open roles."
+    },
+    {
+      "name": "waas_inspect_application",
+      "description": "Inspect application requirements: fields, type, external links."
+    },
+    {
+      "name": "waas_submit_application",
+      "description": "Submit application answers (dry_run=true by default)."
+    },
+    {
+      "name": "waas_list_applied",
+      "description": "List jobs submitted via this MCP (local tracker)."
+    }
+  ],
+  "keywords": ["mcp", "waas", "workatastartup", "ycombinator", "jobs", "apply", "careers"],
+  "license": "MIT",
+  "compatibility": {
+    "claude_desktop": ">=0.10.0",
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
+  }
+}

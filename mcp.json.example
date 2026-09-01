@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "waas": {
+      "command": "node",
+      "args": ["/path/to/waas-mcp/dist/index.js"]
+    }
+  }
+}
