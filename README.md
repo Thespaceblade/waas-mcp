@@ -70,7 +70,7 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 
 | Type | Meaning |
 |------|---------|
-| `custom_questions` | Resume URL, multiple choice, text questions |
+| `custom_questions` | Resume URL, multiple choice, text questions — **includes required `message` field (50+ chars)** |
 | `in_app_message` | Default "message the founder" textarea |
 | `external` | Greenhouse, email, etc. — **won't auto-submit** |
 | `already_applied` | Skip |

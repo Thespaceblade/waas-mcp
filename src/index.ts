@@ -14,7 +14,7 @@ import { parseCompanySlug, parseJobId } from "./waas.js";
 
 const server = new McpServer({
   name: "waas-mcp",
-  version: "0.2.2",
+  version: "0.2.3",
 });
 
 const WORKFLOW = `

@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 import { detectApplyLimitMessage } from "../quota.js";
+import { applyControl, appliedControl } from "./apply-controls.js";
 
 export type ApplyUiState = {
   canOpenApply: boolean;
@@ -9,8 +10,8 @@ export type ApplyUiState = {
 };
 
 export async function readApplyUiState(page: Page): Promise<ApplyUiState> {
-  const applyCount = await page.getByRole("link", { name: /^Apply$/ }).count();
-  const appliedCount = await page.getByRole("link", { name: /^Applied$/ }).count();
+  const applyCount = await applyControl(page).count();
+  const appliedCount = await appliedControl(page).count();
   const canOpenApply = applyCount > 0 && appliedCount === 0;
 
   if (!canOpenApply) {
@@ -22,7 +23,7 @@ export async function readApplyUiState(page: Page): Promise<ApplyUiState> {
     };
   }
 
-  await page.getByRole("link", { name: /^Apply$/ }).first().click({ force: true });
+  await applyControl(page).first().click({ force: true });
   await page.waitForTimeout(1500);
 
   const modalText = await page.evaluate(() => {

@@ -1,6 +1,6 @@
 {
   "name": "waas-mcp",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "MCP server for browsing and applying to YC Work at a Startup jobs (workatastartup.com)",
   "license": "MIT",
   "type": "module",

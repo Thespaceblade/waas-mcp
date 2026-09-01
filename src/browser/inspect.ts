@@ -7,6 +7,7 @@ import { isLoggedInPage, withBrowser, withPublicBrowser } from "../session.js";
 import { BASE_URL, htmlToText, pick } from "../waas.js";
 import { gotoAndReadInertia } from "./inertia.js";
 import { readApplyUiState } from "./apply-quota.js";
+import { readApplyAnchor, applyControl } from "./apply-controls.js";
 import { applyWeeklyQuotaToInspection, resolveWeeklyQuotaStatus } from "../quota.js";
 
 export type ApplicationInspection = {
@@ -178,7 +179,11 @@ function buildInspection(
   } else if (fields.length > 0) {
     applicationType = "custom_questions";
     canAutoSubmit = loggedIn;
+    if (!fields.some((field) => field.name === "message")) {
+      fields = [defaultMessageField()[0]!, ...fields];
+    }
     notes.push("Custom application questions are listed in fields.");
+    notes.push("Include a message of at least 50 characters — WaaS requires it alongside custom questions.");
     if (!loggedIn) notes.push("Log in to submit. Run npm run login.");
   } else if (!loggedIn && applyUrl?.includes("authenticate")) {
     applicationType = "needs_login";
@@ -225,19 +230,8 @@ function defaultMessageField(): FormField[] {
   ];
 }
 
-async function readApplyAnchor(page: Page): Promise<{ applied: boolean; canApply: boolean }> {
-  return page.evaluate(() => {
-    for (const anchor of document.querySelectorAll("a")) {
-      const t = anchor.textContent?.replace(/\s+/g, " ").trim();
-      if (t === "Applied") return { applied: true, canApply: false };
-      if (t === "Apply") return { applied: false, canApply: true };
-    }
-    return { applied: false, canApply: false };
-  });
-}
-
 async function openApplyModalAndReadFields(page: Page): Promise<FormField[]> {
-  const apply = page.getByRole("link", { name: /^Apply$/ }).first();
+  const apply = applyControl(page).first();
   if ((await apply.count()) === 0) return [];
   await apply.click();
   await page.waitForTimeout(1000);
