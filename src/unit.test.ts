@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { buildJobsSearchUrl, filterHitsByJobType, matchesJobType } from "./filters.js";
 import { detectExternalApply } from "./external-detect.js";
 import { customQuestionsToFields } from "./questions.js";
+import {
+  applicationsThisWeek,
+  buildWeeklyQuotaStatus,
+  detectApplyLimitMessage,
+  weekStartMonday,
+  type WaasConversation,
+} from "./quota.js";
 
 describe("buildJobsSearchUrl", () => {
   it("builds role and remote filters", () => {
@@ -63,5 +70,65 @@ describe("customQuestionsToFields", () => {
     ]);
     assert.equal(fields[0]?.type, "url");
     assert.equal(fields[0]?.name, "question_1");
+  });
+});
+
+describe("weekly quota", () => {
+  const monday = new Date("2026-09-01T12:00:00Z");
+
+  it("counts applications since Monday from conversations API", () => {
+    const conversations: WaasConversation[] = [
+      {
+        id: "c1",
+        has_applied: true,
+        company: { id: 1, name: "Acme" },
+        referenced_job_ids: [100],
+        messages: [{ from_candidate: true, created_at: "2026-08-30T10:00:00Z" }],
+      },
+      {
+        id: "c2",
+        has_applied: true,
+        company: { id: 2, name: "Beta" },
+        referenced_job_ids: [200],
+        messages: [{ from_candidate: true, created_at: "2026-09-02T10:00:00Z" }],
+      },
+    ];
+
+    const apps = applicationsThisWeek(conversations, monday);
+    assert.equal(apps.length, 1);
+    assert.equal(apps[0]?.company, "Beta");
+  });
+
+  it("builds atLimit status when cap reached", () => {
+    const conversations: WaasConversation[] = Array.from({ length: 10 }, (_, i) => ({
+      id: `c${i}`,
+      has_applied: true,
+      company: { id: i, name: `Co${i}` },
+      referenced_job_ids: [i],
+      messages: [{ from_candidate: true, created_at: "2026-09-02T10:00:00Z" }],
+    }));
+
+    const status = buildWeeklyQuotaStatus(conversations, { reference: monday, cap: 10 });
+    assert.equal(status.used, 10);
+    assert.equal(status.atLimit, true);
+    assert.equal(status.remaining, 0);
+    assert.match(status.message, /cap reached/i);
+    assert.match(status.applyBlockedReason ?? "", /10 applications per week/);
+  });
+
+  it("week starts on Monday", () => {
+    const monday = new Date(2026, 8, 7, 12, 0, 0); // Sep 7 2026 is a Monday
+    const start = weekStartMonday(monday);
+    assert.equal(start.getDay(), 1);
+    assert.equal(start.getDate(), 7);
+    assert.equal(start.getHours(), 0);
+  });
+
+  it("detects limit messages in UI copy", () => {
+    const msg = detectApplyLimitMessage(
+      "You have reached the maximum number of applications per week. Try again next Monday.",
+    );
+    assert.ok(msg);
+    assert.match(msg, /applications per week/i);
   });
 });

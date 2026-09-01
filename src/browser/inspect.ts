@@ -6,6 +6,8 @@ import { isTrackedApplied } from "../tracker.js";
 import { isLoggedInPage, withBrowser, withPublicBrowser } from "../session.js";
 import { BASE_URL, htmlToText, pick } from "../waas.js";
 import { gotoAndReadInertia } from "./inertia.js";
+import { readApplyUiState } from "./apply-quota.js";
+import { applyWeeklyQuotaToInspection, resolveWeeklyQuotaStatus } from "../quota.js";
 
 export type ApplicationInspection = {
   jobId: string;
@@ -19,10 +21,13 @@ export type ApplicationInspection = {
     | "custom_questions"
     | "in_app_message"
     | "external"
+    | "weekly_limit_reached"
     | "unknown";
   alreadyApplied: boolean;
   canAutoSubmit: boolean;
   loggedIn: boolean;
+  applyBlocked?: boolean;
+  weeklyQuota?: Awaited<ReturnType<typeof resolveWeeklyQuotaStatus>>;
   fields: FormField[];
   external: ReturnType<typeof detectExternalApply>;
   applyUrl: string | null;
@@ -51,38 +56,61 @@ export async function inspectApplication(jobId: string): Promise<ApplicationInsp
       try {
         return await enrichWithSession(jobId, publicInspection);
       } catch {
-        return publicInspection;
+        return attachQuotaContext(publicInspection, jobId);
       }
     }
-    return publicInspection;
+    return hasSession() ? attachQuotaContext(publicInspection, jobId) : publicInspection;
   }
 
   try {
-    return await withBrowser(async (page) => {
+    const inspection = await withBrowser(async (page) => {
       const inertia = await gotoAndReadInertia(page, `${BASE_URL}/jobs/${jobId}`);
       const loggedIn = await isLoggedInPage(page);
       const anchorState = await readApplyAnchor(page);
-      const inspection = buildInspection(jobId, inertia, loggedIn, anchorState);
+      let result = buildInspection(jobId, inertia, loggedIn, anchorState);
 
-      if (inspection.alreadyApplied || inspection.applicationType === "external") {
-        return inspection;
+      if (result.alreadyApplied || result.applicationType === "external") {
+        return result;
       }
 
-      if (loggedIn && inspection.fields.length <= 1) {
+      if (loggedIn && result.fields.length <= 1) {
         const domFields = await openApplyModalAndReadFields(page);
         if (domFields.length > 0) {
-          inspection.fields = domFields;
-          inspection.applicationType = domFields.some((f) => f.type !== "message")
+          result.fields = domFields;
+          result.applicationType = domFields.some((f) => f.type !== "message")
             ? "custom_questions"
             : "in_app_message";
         }
-        inspection.canAutoSubmit = true;
+        result.canAutoSubmit = true;
       }
 
-      return inspection;
+      return result;
     });
+    return attachQuotaContext(inspection, jobId);
   } catch {
-    return publicInspection;
+    return attachQuotaContext(publicInspection, jobId);
+  }
+}
+
+async function attachQuotaContext(
+  inspection: ApplicationInspection,
+  jobId: string,
+): Promise<ApplicationInspection> {
+  if (!hasSession()) return inspection;
+
+  try {
+    const weeklyQuota = await resolveWeeklyQuotaStatus();
+    if (!weeklyQuota.atLimit || inspection.alreadyApplied || inspection.applicationType === "external") {
+      return applyWeeklyQuotaToInspection(inspection, weeklyQuota);
+    }
+
+    const ui = await withBrowser(async (page) => {
+      await gotoAndReadInertia(page, `${BASE_URL}/jobs/${jobId}`);
+      return readApplyUiState(page);
+    });
+    return applyWeeklyQuotaToInspection(inspection, weeklyQuota, ui);
+  } catch {
+    return inspection;
   }
 }
 
@@ -90,7 +118,7 @@ async function enrichWithSession(
   jobId: string,
   inspection: ApplicationInspection,
 ): Promise<ApplicationInspection> {
-  return withBrowser(async (page) => {
+  const enriched = await withBrowser(async (page) => {
     await gotoAndReadInertia(page, `${BASE_URL}/jobs/${jobId}`);
     const loggedIn = await isLoggedInPage(page);
     const anchorState = await readApplyAnchor(page);
@@ -110,6 +138,8 @@ async function enrichWithSession(
         : inspection.notes,
     };
   });
+
+  return attachQuotaContext(enriched, jobId);
 }
 
 function buildInspection(

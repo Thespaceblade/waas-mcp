@@ -1,5 +1,6 @@
 import { buildCompaniesSearchUrl, buildJobsSearchUrl, filterHitsByJobType, type WaasSearchFilters } from "../filters.js";
 import { hasSession } from "../config.js";
+import { resolveWeeklyQuotaStatus, type WeeklyQuotaStatus } from "../quota.js";
 import { isLoggedInPage, withBrowser, withPublicBrowser } from "../session.js";
 import { BASE_URL } from "../waas.js";
 import { gotoAndReadInertia } from "./inertia.js";
@@ -24,6 +25,7 @@ export type SearchResults = {
   totalHits: number;
   hits: SearchHit[];
   filterNote?: string;
+  weeklyQuota?: WeeklyQuotaStatus;
   fetchedAt: string;
 };
 
@@ -35,14 +37,18 @@ export async function searchJobs(
   const jobsUrl = buildJobsSearchUrl(filters);
   const companiesUrl = buildCompaniesSearchUrl(filters);
 
+  const weeklyQuota = hasSession()
+    ? await resolveWeeklyQuotaStatus().catch(() => undefined)
+    : undefined;
+
   const publicResults = await fetchJobsListing(jobsUrl);
 
   if (publicResults.hits.length > 0) {
-    return finalizeResults(publicResults, filters, limit);
+    return finalizeResults(publicResults, filters, limit, weeklyQuota);
   }
 
   if (!options?.preferCompanies) {
-    return finalizeResults({ ...publicResults, hits: [], totalHits: 0 }, filters, limit);
+    return finalizeResults({ ...publicResults, hits: [], totalHits: 0 }, filters, limit, weeklyQuota);
   }
 
   try {
@@ -51,9 +57,9 @@ export async function searchJobs(
       const loggedIn = await isLoggedInPage(page);
       return parseCompaniesListing(inertia, page.url(), loggedIn);
     });
-    return finalizeResults(loggedInResults, filters, limit);
+    return finalizeResults(loggedInResults, filters, limit, weeklyQuota);
   } catch {
-    return finalizeResults({ ...publicResults, hits: [], totalHits: 0 }, filters, limit);
+    return finalizeResults({ ...publicResults, hits: [], totalHits: 0 }, filters, limit, weeklyQuota);
   }
 }
 
@@ -80,6 +86,7 @@ function finalizeResults(
   results: SearchResults,
   filters: WaasSearchFilters,
   limit: number,
+  weeklyQuota?: WeeklyQuotaStatus,
 ): SearchResults {
   const { hits, note } = filterHitsByJobType(results.hits, filters.job_type);
   return {
@@ -87,6 +94,7 @@ function finalizeResults(
     hits: hits.slice(0, limit),
     totalHits: hits.length,
     ...(note ? { filterNote: note } : {}),
+    ...(weeklyQuota ? { weeklyQuota } : {}),
   };
 }
 

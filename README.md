@@ -57,6 +57,7 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 
 | Step | Tool |
 |------|------|
+| Check weekly cap | `waas_application_quota` — 10 in-app applications/week (Monday reset); also on `waas_search` / `waas_inspect_application` as `weeklyQuota` |
 | `waas_search` | `waas_search` — role, remote, visa, keywords, etc. (`job_type` tightened client-side when WaaS returns mixed results) |
 | Read job | `waas_get_job` |
 | Read company | `waas_get_company` |
@@ -73,11 +74,25 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 | `in_app_message` | Default "message the founder" textarea |
 | `external` | Greenhouse, email, etc. — **won't auto-submit** |
 | `already_applied` | Skip |
+| `weekly_limit_reached` | 10/week cap hit — **won't auto-submit** (`applyBlocked: true`) |
 | `needs_login` | Run `npm run login` |
+
+### Weekly application cap
+
+Work at a Startup limits **10 in-app applications per calendar week** (week starts Monday). When the cap is reached, the Apply modal is blocked or shows a limit message.
+
+The MCP tracks usage by counting your candidate messages in `GET /api/conversations` since Monday. Agents should:
+
+1. Call `waas_application_quota` before batch apply sessions.
+2. Check `weeklyQuota` on search/inspect responses (`atLimit`, `remaining`, `applyBlockedReason`).
+3. Stop if `applicationType` is `weekly_limit_reached` or `applyBlocked` is true.
+
+Optional override: set `WAAS_QUOTA_PATH` to a JSON file to merge manual counts with the API.
 
 ## Example workflow
 
 ```
+waas_application_quota {}
 waas_search { "role": "eng", "remote": true, "limit": 10 }
 waas_inspect_application { "job_id": "99221" }
 waas_submit_application {

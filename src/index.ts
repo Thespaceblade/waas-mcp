@@ -9,23 +9,26 @@ import { checkSessionValid } from "./session.js";
 import { fetchCompany } from "./company-client.js";
 import { fetchJobPosting } from "./job-client.js";
 import { loadApplied } from "./tracker.js";
+import { resolveWeeklyQuotaStatus } from "./quota.js";
 import { parseCompanySlug, parseJobId } from "./waas.js";
 
 const server = new McpServer({
   name: "waas-mcp",
-  version: "0.2.1",
+  version: "0.2.2",
 });
 
 const WORKFLOW = `
 WORKFLOW (required):
-1. waas_search with structured filters (or waas_get_job from a URL the user provides).
-2. waas_get_job + waas_get_company for full context.
-3. waas_inspect_application — returns applicationType, fields[], external hints.
-4. If applicationType=external → report link/email to user; do NOT auto-submit.
-5. If applicationType=needs_login → tell user to run npm run login.
-6. Draft answers for every required field in fields[].
-7. waas_submit_application with dry_run=true — show the user all answers.
-8. Only after explicit approval → dry_run=false.
+1. waas_application_quota (or waas_search weeklyQuota) — check remaining in-app applications this week (cap is 10).
+2. waas_search with structured filters (or waas_get_job from a URL the user provides).
+3. waas_get_job + waas_get_company for full context.
+4. waas_inspect_application — returns applicationType, fields[], weeklyQuota, applyBlocked.
+5. If applicationType=weekly_limit_reached or applyBlocked=true → stop; do NOT submit.
+6. If applicationType=external → report link/email to user; do NOT auto-submit.
+7. If applicationType=needs_login → tell user to run npm run login.
+8. Draft answers for every required field in fields[].
+9. waas_submit_application with dry_run=true — show the user all answers.
+10. Only after explicit approval → dry_run=false.
 Never auto-submit. Skip already_applied jobs.
 `.trim();
 
@@ -36,6 +39,20 @@ server.tool(
   async () => {
     const status = await checkSessionValid();
     return toolOk(status);
+  },
+);
+
+server.tool(
+  "waas_application_quota",
+  "Check Work at a Startup weekly in-app application cap (10/week). Counts submissions from /api/conversations since Monday. Call before planning multiple applies.",
+  {},
+  async () => {
+    try {
+      const quota = await resolveWeeklyQuotaStatus();
+      return toolOk(quota);
+    } catch (error) {
+      return toolError(error);
+    }
   },
 );
 

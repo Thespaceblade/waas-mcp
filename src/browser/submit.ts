@@ -4,6 +4,7 @@ import { markApplied } from "../tracker.js";
 import { withBrowser } from "../session.js";
 import { BASE_URL } from "../waas.js";
 import { gotoAndReadInertia } from "./inertia.js";
+import { parseApplyErrorBody, resolveWeeklyQuotaStatus } from "../quota.js";
 
 export type SubmitAnswers = Record<string, string | number>;
 
@@ -14,6 +15,7 @@ export type SubmitResult = {
   alreadyApplied: boolean;
   answers: SubmitAnswers;
   warnings: string[];
+  weeklyQuota?: Awaited<ReturnType<typeof resolveWeeklyQuotaStatus>>;
   responseUrl?: string;
 };
 
@@ -24,6 +26,24 @@ export async function submitApplication(
 ): Promise<SubmitResult> {
   const inspection = await inspectApplication(jobId);
   const warnings = [...inspection.notes];
+
+  if (inspection.applyBlocked || inspection.applicationType === "weekly_limit_reached") {
+    const weeklyQuota =
+      inspection.weeklyQuota ?? (await resolveWeeklyQuotaStatus().catch(() => undefined));
+    return {
+      jobId,
+      dryRun,
+      submitted: false,
+      alreadyApplied: false,
+      answers,
+      weeklyQuota,
+      warnings: [
+        ...warnings,
+        weeklyQuota?.applyBlockedReason ?? "Weekly application cap reached on Work at a Startup.",
+        "Cannot submit while the weekly cap is reached.",
+      ],
+    };
+  }
 
   if (inspection.alreadyApplied) {
     return {
@@ -58,16 +78,19 @@ export async function submitApplication(
   validateAnswers(inspection, answers);
 
   if (dryRun) {
+    const weeklyQuota = inspection.weeklyQuota;
     return {
       jobId,
       dryRun: true,
       submitted: false,
       alreadyApplied: false,
       answers,
+      weeklyQuota,
       warnings: [
         ...warnings,
         "Dry run — no submission made.",
         `Would fill ${Object.keys(answers).length} field(s).`,
+        ...(weeklyQuota ? [weeklyQuota.message] : []),
       ],
     };
   }
@@ -104,9 +127,27 @@ export async function submitApplication(
       await send.click();
       await page.waitForTimeout(2000);
 
+      const responseText = await page.evaluate(() => {
+        const el = document.querySelector("[data-page]");
+        return el?.getAttribute("data-page") ?? "";
+      });
+      const limitFromPage = parseApplyErrorBody(responseText);
+
       const success =
         (await page.getByRole("link", { name: /^Applied$/ }).count()) > 0 ||
         (await page.getByText(/application sent|applied/i).count()) > 0;
+
+      if (!success && limitFromPage) {
+        return {
+          jobId,
+          dryRun: false,
+          submitted: false,
+          alreadyApplied: false,
+          answers,
+          warnings: [limitFromPage, "Submit blocked by Work at a Startup weekly application cap."],
+          responseUrl: page.url(),
+        };
+      }
 
       if (success) {
         markApplied({
