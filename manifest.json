@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "waas-mcp",
   "display_name": "Work at a Startup (WaaS)",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Search, inspect, and apply to YC Work at a Startup jobs from your AI assistant.",
   "long_description": "MCP server for [Work at a Startup](https://www.workatastartup.com) — YC's job board.\n\n**Search** with structured filters (role, remote, visa, keywords). **Inspect** each application for custom questions, resume URLs, and external apply links. **Track weekly quota** (10 in-app applications/week). **Submit** with dry-run safety by default.\n\n**Before applying**, sign in once from a terminal in the extension folder:\n\n```bash\nnpm run login\n```\n\nSession is saved to `~/.waas-mcp/storage-state.json`.",
   "author": {
@@ -16,6 +16,29 @@
   "homepage": "https://github.com/Thespaceblade/waas-mcp",
   "documentation": "https://github.com/Thespaceblade/waas-mcp#readme",
   "support": "https://github.com/Thespaceblade/waas-mcp/issues",
+  "icon": "icon.png",
+  "icons": [
+    {
+      "src": "assets/icons/icon-16-light.png",
+      "size": "16x16",
+      "theme": "light"
+    },
+    {
+      "src": "assets/icons/icon-16-dark.png",
+      "size": "16x16",
+      "theme": "dark"
+    },
+    {
+      "src": "assets/icons/icon-48-light.png",
+      "size": "48x48",
+      "theme": "light"
+    },
+    {
+      "src": "assets/icons/icon-48-dark.png",
+      "size": "48x48",
+      "theme": "dark"
+    }
+  ],
   "server": {
     "type": "node",
     "entry_point": "dist/index.js",

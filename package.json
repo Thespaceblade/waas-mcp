@@ -1,6 +1,6 @@
 {
   "name": "waas-mcp",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "MCP server for browsing and applying to YC Work at a Startup jobs (workatastartup.com)",
   "license": "MIT",
   "type": "module",
@@ -24,7 +24,8 @@
     "login": "npm run build && node dist/login.js",
     "test": "npm run build && node --test 'dist/**/*.test.js'",
     "test:live": "npx tsx src/scripts/integration-test.ts",
-    "pack:mcpb": "npm run build && npx -y @anthropic-ai/mcpb@latest validate manifest.json && npx -y @anthropic-ai/mcpb@latest pack . waas-mcp.mcpb"
+    "pack:mcpb": "npm run build && npx -y @anthropic-ai/mcpb@latest validate manifest.json && npx -y @anthropic-ai/mcpb@latest pack . waas-mcp.mcpb",
+    "icons": "python3 scripts/generate-icons.py"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
