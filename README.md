@@ -98,7 +98,24 @@ npm install          # runs build + Playwright chromium via lifecycle scripts
 npm run login
 ```
 
-## Scripts
+## Upgrade
+
+```bash
+cd waas-mcp && git pull && npm install
+```
+
+Reload MCP in Cursor after updating.
+
+### Claude Desktop (.mcpb)
+
+Claude **does not auto-update** installed extensions. After a new release:
+
+1. Download `waas-mcp.mcpb` from [Releases](https://github.com/Thespaceblade/waas-mcp/releases)
+2. Claude → Settings → Extensions → remove old WaaS extension
+3. Install the new `.mcpb` (drag & drop or file picker)
+4. **Quit Claude completely** (Cmd+Q) and reopen — MCP servers only restart on app launch
+
+Or point Claude at a git clone via `claude_desktop_config.json` (same snippet as Cursor) to pick up `git pull` + `npm run build` without reinstalling the bundle.
 
 | Command | Purpose |
 |---------|---------|
