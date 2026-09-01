@@ -40,7 +40,7 @@ export function registerWaasTools(server: McpServer): void {
     {
       title: "Weekly application quota",
       description:
-        "Check Work at a Startup weekly in-app application cap (10/week). Counts submissions from /api/conversations since Monday. Call before planning multiple applies.",
+        "Check Work at a Startup weekly in-app application cap (10/week). Counts candidate messages since Monday from /api/conversations, merged with ~/.waas-mcp/applied.json for recent MCP submits.",
     },
     async () => {
       try {

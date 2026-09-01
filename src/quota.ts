@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolveSessionCookie } from "./waas.js";
+import { loadApplied, type AppliedRecord } from "./tracker.js";
 
 export const DEFAULT_WEEKLY_CAP = Number(process.env.WAAS_WEEKLY_CAP ?? 10);
 
@@ -33,9 +34,10 @@ export type WeeklyQuotaStatus = {
   atLimit: boolean;
   weekStart: string;
   weekResetsAt: string;
-  source: "conversations_api";
+  source: "conversations_api" | "conversations_api+local_tracker";
   applicationsThisWeek: WeeklyApplication[];
   message: string;
+  countNote?: string;
   applyBlockedReason: string | null;
 };
 
@@ -65,25 +67,22 @@ export function applicationsThisWeek(
     if (!conversation.has_applied) continue;
 
     const candidateMessages = (conversation.messages ?? [])
-      .filter((message) => message.from_candidate)
+      .filter((message) => message.from_candidate && message.created_at)
+      .filter((message) => new Date(message.created_at!) >= weekStart)
       .sort(
         (a, b) =>
-          new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime(),
+          new Date(a.created_at!).getTime() - new Date(b.created_at!).getTime(),
       );
 
-    const appliedAt =
-      candidateMessages[0]?.created_at ??
-      conversation.last_active_at ??
-      null;
-    if (!appliedAt || new Date(appliedAt) < weekStart) continue;
-
-    results.push({
-      company: conversation.company?.name ?? conversation.id,
-      companyId: conversation.company?.id ?? null,
-      jobIds: conversation.referenced_job_ids ?? [],
-      appliedAt,
-      conversationId: conversation.id,
-    });
+    for (const message of candidateMessages) {
+      results.push({
+        company: conversation.company?.name ?? conversation.id,
+        companyId: conversation.company?.id ?? null,
+        jobIds: conversation.referenced_job_ids ?? [],
+        appliedAt: message.created_at!,
+        conversationId: conversation.id,
+      });
+    }
   }
 
   return results.sort(
@@ -91,17 +90,62 @@ export function applicationsThisWeek(
   );
 }
 
+export function mergeWithLocalTracker(
+  fromConversations: WeeklyApplication[],
+  reference = new Date(),
+  localRecords: AppliedRecord[] = loadApplied(),
+): { applications: WeeklyApplication[]; addedFromTracker: number } {
+  const weekStart = weekStartMonday(reference);
+  const seenJobIds = new Set(fromConversations.flatMap((app) => app.jobIds.map(String)));
+  const merged = [...fromConversations];
+  let addedFromTracker = 0;
+
+  for (const record of localRecords) {
+    if (record.dryRun) continue;
+    if (new Date(record.appliedAt) < weekStart) continue;
+    if (seenJobIds.has(record.jobId)) continue;
+
+    seenJobIds.add(record.jobId);
+    addedFromTracker += 1;
+    merged.push({
+      company: record.company,
+      companyId: null,
+      jobIds: [Number(record.jobId)].filter((id) => Number.isFinite(id)),
+      appliedAt: record.appliedAt,
+      conversationId: `local:${record.jobId}`,
+    });
+  }
+
+  return {
+    applications: merged.sort(
+      (a, b) => new Date(a.appliedAt).getTime() - new Date(b.appliedAt).getTime(),
+    ),
+    addedFromTracker,
+  };
+}
+
 export function buildWeeklyQuotaStatus(
   conversations: WaasConversation[],
-  options?: { cap?: number; reference?: Date },
+  options?: { cap?: number; reference?: Date; localRecords?: AppliedRecord[] },
 ): WeeklyQuotaStatus {
   const cap = options?.cap ?? DEFAULT_WEEKLY_CAP;
-  const weekStartDate = weekStartMonday(options?.reference);
+  const reference = options?.reference;
+  const weekStartDate = weekStartMonday(reference);
   const weekStart = weekStartDate.toISOString().slice(0, 10);
-  const weekApps = applicationsThisWeek(conversations, options?.reference);
+  const fromConversations = applicationsThisWeek(conversations, reference);
+  const { applications: weekApps, addedFromTracker } = mergeWithLocalTracker(
+    fromConversations,
+    reference,
+    options?.localRecords,
+  );
   const used = weekApps.length;
   const remaining = Math.max(0, cap - used);
   const atLimit = used >= cap;
+  const source = addedFromTracker > 0 ? "conversations_api+local_tracker" : "conversations_api";
+  const countNote =
+    addedFromTracker > 0
+      ? `${addedFromTracker} recent submission(s) included from the local MCP tracker (~/.waas-mcp/applied.json) that were not yet visible in /api/conversations.`
+      : "Counts each candidate message sent since Monday (re-applies to existing company threads count separately).";
 
   return {
     cap,
@@ -110,8 +154,9 @@ export function buildWeeklyQuotaStatus(
     atLimit,
     weekStart,
     weekResetsAt: weekResetsAt(weekStartDate),
-    source: "conversations_api",
+    source,
     applicationsThisWeek: weekApps,
+    countNote,
     message: atLimit
       ? `Weekly application cap reached (${used}/${cap}). New in-app applications are blocked until ${weekResetsAt(weekStartDate).slice(0, 10)}.`
       : `${remaining} of ${cap} Work at a Startup applications remaining this week (${used} used since ${weekStart}).`,

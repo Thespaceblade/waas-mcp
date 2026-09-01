@@ -7,6 +7,7 @@ import {
   applicationsThisWeek,
   buildWeeklyQuotaStatus,
   detectApplyLimitMessage,
+  mergeWithLocalTracker,
   weekStartMonday,
   type WaasConversation,
 } from "./quota.js";
@@ -99,6 +100,55 @@ describe("weekly quota", () => {
     assert.equal(apps[0]?.company, "Beta");
   });
 
+  it("counts re-applies in existing company threads this week", () => {
+    const conversations: WaasConversation[] = [
+      {
+        id: "lambda-robotics",
+        has_applied: true,
+        company: { id: 1, name: "Lambda Robotics" },
+        referenced_job_ids: [102288, 102289],
+        messages: [
+          { from_candidate: true, created_at: "2026-08-09T02:35:21.971Z" },
+          { from_candidate: true, created_at: "2026-09-01T19:36:50.409Z" },
+        ],
+      },
+    ];
+
+    const apps = applicationsThisWeek(conversations, monday);
+    assert.equal(apps.length, 1);
+    assert.equal(apps[0]?.company, "Lambda Robotics");
+    assert.equal(apps[0]?.appliedAt, "2026-09-01T19:36:50.409Z");
+  });
+
+  it("merges local tracker submissions missing from conversations API", () => {
+    const conversations: WaasConversation[] = [
+      {
+        id: "the-subvocal-company",
+        has_applied: true,
+        company: { id: 2, name: "The Subvocal Company" },
+        referenced_job_ids: [107082],
+        messages: [{ from_candidate: true, created_at: "2026-09-01T18:53:39.191Z" }],
+      },
+    ];
+
+    const { applications, addedFromTracker } = mergeWithLocalTracker(
+      applicationsThisWeek(conversations, monday),
+      monday,
+      [
+        {
+          jobId: "102288",
+          company: "Lambda Robotics",
+          title: "Electrical Engineer, Robotics",
+          appliedAt: "2026-09-01T19:36:52.357Z",
+        },
+      ],
+    );
+
+    assert.equal(addedFromTracker, 1);
+    assert.equal(applications.length, 2);
+    assert.ok(applications.some((app) => app.conversationId === "local:102288"));
+  });
+
   it("builds atLimit status when cap reached", () => {
     const conversations: WaasConversation[] = Array.from({ length: 10 }, (_, i) => ({
       id: `c${i}`,
@@ -108,7 +158,11 @@ describe("weekly quota", () => {
       messages: [{ from_candidate: true, created_at: "2026-09-02T10:00:00Z" }],
     }));
 
-    const status = buildWeeklyQuotaStatus(conversations, { reference: monday, cap: 10 });
+    const status = buildWeeklyQuotaStatus(conversations, {
+      reference: monday,
+      cap: 10,
+      localRecords: [],
+    });
     assert.equal(status.used, 10);
     assert.equal(status.atLimit, true);
     assert.equal(status.remaining, 0);

@@ -81,13 +81,7 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 
 Work at a Startup limits **10 in-app applications per calendar week** (week starts Monday). When the cap is reached, the Apply modal is blocked or shows a limit message.
 
-The MCP tracks usage by counting your candidate messages in `GET /api/conversations` since Monday. Agents should:
-
-1. Call `waas_application_quota` before batch apply sessions.
-2. Check `weeklyQuota` on search/inspect responses (`atLimit`, `remaining`, `applyBlockedReason`).
-3. Stop if `applicationType` is `weekly_limit_reached` or `applyBlocked` is true.
-
-Optional override: set `WAAS_QUOTA_PATH` to a JSON file to merge manual counts with the API.
+The MCP tracks usage by counting your candidate messages in `GET /api/conversations` since Monday (re-applies to existing company threads count separately). It also merges `~/.waas-mcp/applied.json` when a recent MCP submit is not yet in the API. Check `countNote` on quota responses. WaaS's server-side cap may still differ slightly — keep a 1–2 application buffer.
 
 ## Example workflow
 
