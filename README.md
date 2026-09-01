@@ -57,7 +57,7 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 
 | Step | Tool |
 |------|------|
-| Set filters | `waas_search` — role, remote, visa, keywords, etc. |
+| `waas_search` | `waas_search` — role, remote, visa, keywords, etc. (`job_type` tightened client-side when WaaS returns mixed results) |
 | Read job | `waas_get_job` |
 | Read company | `waas_get_company` |
 | Inspect apply form | `waas_inspect_application` — `applicationType`, `fields[]`, external links |

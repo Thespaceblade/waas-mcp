@@ -70,18 +70,46 @@ export function buildCompaniesSearchUrl(filters: WaasSearchFilters = {}): string
   return `${BASE_URL}/companies?${params.toString()}`;
 }
 
+export function rolePathFor(role: WaasSearchFilters["role"]): string | undefined {
+  return role ? ROLE_PATHS[role] : undefined;
+}
+
 function buildQuerySuffix(filters: WaasSearchFilters, skipRole: boolean): string {
   const params = new URLSearchParams();
   if (!skipRole && filters.role) params.set("role", filters.role);
   if (filters.query) params.set("query", filters.query);
   if (filters.remote === true) params.set("remote", "yes");
   if (filters.remote === false) params.set("remote", "no");
+  if (filters.job_type) params.set("jobType", filters.job_type);
   if (filters.layout) params.set("layout", filters.layout);
   if (filters.sort_by) params.set("sortBy", filters.sort_by);
   const qs = params.toString();
   return qs ? `?${qs}` : "";
 }
 
-export function rolePathFor(role: WaasSearchFilters["role"]): string | undefined {
-  return role ? ROLE_PATHS[role] : undefined;
+const JOB_TYPE_PATTERNS: Record<NonNullable<WaasSearchFilters["job_type"]>, RegExp> = {
+  fulltime: /^full\s*time$/i,
+  intern: /^intern(ship)?$/i,
+  cofounder: /^co[- ]?founder$/i,
+  contract: /^contract$/i,
+};
+
+export function matchesJobType(
+  jobTypeLabel: string,
+  filter: NonNullable<WaasSearchFilters["job_type"]>,
+): boolean {
+  return JOB_TYPE_PATTERNS[filter].test(jobTypeLabel.trim());
+}
+
+export function filterHitsByJobType<T extends { jobType: string }>(
+  hits: T[],
+  jobType?: WaasSearchFilters["job_type"],
+): { hits: T[]; note: string | null } {
+  if (!jobType) return { hits, note: null };
+  const filtered = hits.filter((hit) => matchesJobType(hit.jobType, jobType));
+  if (filtered.length === hits.length) return { hits, note: null };
+  return {
+    hits: filtered,
+    note: `job_type="${jobType}" tightened client-side (${hits.length} from WaaS → ${filtered.length} matched).`,
+  };
 }

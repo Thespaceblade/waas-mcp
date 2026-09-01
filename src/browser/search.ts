@@ -1,5 +1,6 @@
-import { buildCompaniesSearchUrl, buildJobsSearchUrl, type WaasSearchFilters } from "../filters.js";
-import { withBrowser, withPublicBrowser } from "../session.js";
+import { buildCompaniesSearchUrl, buildJobsSearchUrl, filterHitsByJobType, type WaasSearchFilters } from "../filters.js";
+import { hasSession } from "../config.js";
+import { isLoggedInPage, withBrowser, withPublicBrowser } from "../session.js";
 import { BASE_URL } from "../waas.js";
 import { gotoAndReadInertia } from "./inertia.js";
 
@@ -22,6 +23,7 @@ export type SearchResults = {
   loggedIn: boolean;
   totalHits: number;
   hits: SearchHit[];
+  filterNote?: string;
   fetchedAt: string;
 };
 
@@ -33,42 +35,65 @@ export async function searchJobs(
   const jobsUrl = buildJobsSearchUrl(filters);
   const companiesUrl = buildCompaniesSearchUrl(filters);
 
-  const publicResults = await withPublicBrowser(async (page) => {
-    const inertia = await gotoAndReadInertia(page, jobsUrl);
-    return parseJobsListing(inertia, page.url());
-  });
+  const publicResults = await fetchJobsListing(jobsUrl);
 
   if (publicResults.hits.length > 0) {
-    return {
-      ...publicResults,
-      hits: publicResults.hits.slice(0, limit),
-      totalHits: publicResults.hits.length,
-    };
+    return finalizeResults(publicResults, filters, limit);
   }
 
   if (!options?.preferCompanies) {
-    return { ...publicResults, hits: [], totalHits: 0 };
+    return finalizeResults({ ...publicResults, hits: [], totalHits: 0 }, filters, limit);
   }
 
   try {
     const loggedInResults = await withBrowser(async (page) => {
       const inertia = await gotoAndReadInertia(page, companiesUrl);
-      const parsed = parseCompaniesListing(inertia, page.url());
-      return { ...parsed, loggedIn: true };
+      const loggedIn = await isLoggedInPage(page);
+      return parseCompaniesListing(inertia, page.url(), loggedIn);
     });
-    return {
-      ...loggedInResults,
-      hits: loggedInResults.hits.slice(0, limit),
-      totalHits: loggedInResults.hits.length,
-    };
+    return finalizeResults(loggedInResults, filters, limit);
   } catch {
-    return { ...publicResults, hits: [], totalHits: 0 };
+    return finalizeResults({ ...publicResults, hits: [], totalHits: 0 }, filters, limit);
   }
+}
+
+async function fetchJobsListing(jobsUrl: string): Promise<SearchResults> {
+  if (hasSession()) {
+    try {
+      return await withBrowser(async (page) => {
+        const inertia = await gotoAndReadInertia(page, jobsUrl);
+        const loggedIn = await isLoggedInPage(page);
+        return parseJobsListing(inertia, page.url(), loggedIn);
+      });
+    } catch {
+      // Fall back to anonymous search.
+    }
+  }
+
+  return withPublicBrowser(async (page) => {
+    const inertia = await gotoAndReadInertia(page, jobsUrl);
+    return parseJobsListing(inertia, page.url(), false);
+  });
+}
+
+function finalizeResults(
+  results: SearchResults,
+  filters: WaasSearchFilters,
+  limit: number,
+): SearchResults {
+  const { hits, note } = filterHitsByJobType(results.hits, filters.job_type);
+  return {
+    ...results,
+    hits: hits.slice(0, limit),
+    totalHits: hits.length,
+    ...(note ? { filterNote: note } : {}),
+  };
 }
 
 function parseJobsListing(
   inertia: { props?: Record<string, unknown> } | null,
   searchUrl: string,
+  loggedIn: boolean,
 ): SearchResults {
   const jobs = Array.isArray(inertia?.props?.jobs) ? inertia!.props!.jobs : [];
   const hits: SearchHit[] = jobs.map((raw) => {
@@ -92,7 +117,7 @@ function parseJobsListing(
 
   return {
     searchUrl,
-    loggedIn: false,
+    loggedIn,
     totalHits: hits.length,
     hits,
     fetchedAt: new Date().toISOString(),
@@ -102,6 +127,7 @@ function parseJobsListing(
 function parseCompaniesListing(
   inertia: { props?: Record<string, unknown> } | null,
   searchUrl: string,
+  loggedIn: boolean,
 ): SearchResults {
   const companies = Array.isArray(inertia?.props?.companies) ? inertia!.props!.companies : [];
   const hits: SearchHit[] = [];
@@ -133,7 +159,7 @@ function parseCompaniesListing(
 
   return {
     searchUrl,
-    loggedIn: true,
+    loggedIn,
     totalHits: hits.length,
     hits,
     fetchedAt: new Date().toISOString(),
