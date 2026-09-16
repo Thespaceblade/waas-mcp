@@ -10,6 +10,7 @@ import { loadApplied } from "./tracker.js";
 import { resolveWeeklyQuotaStatus } from "./quota.js";
 import { fetchWaasProfile, fetchWaasProfilePreview } from "./profile-client.js";
 import { updateWaasProfile } from "./update-profile-client.js";
+import { auditWaasProfile } from "./audit-profile-client.js";
 import { parseCompanySlug, parseJobId } from "./waas.js";
 
 export const WORKFLOW = `
@@ -135,6 +136,32 @@ export function registerWaasTools(server: McpServer): void {
     async (args) => {
       try {
         return toolOk(await updateWaasProfile(args));
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "waas_audit_profile",
+    {
+      title: "Audit WAAS profile",
+      description:
+        "Diagnose weak/missing/wrong profile entries. Returns gaps[], wrong_dates[], demote_or_remove[], suggested_order[], plus share/skills notes. Optional source_paths (resume/checklist markdown) and expect[] names for gap detection. Requires login.",
+      inputSchema: {
+        source_paths: z
+          .array(z.string())
+          .optional()
+          .describe("Local resume/checklist/markdown paths to extract expected company/project names."),
+        expect: z
+          .array(z.string())
+          .optional()
+          .describe("Extra names that should appear on the live profile (e.g. Zhang Lab)."),
+      },
+    },
+    async (args) => {
+      try {
+        return toolOk(await auditWaasProfile(args));
       } catch (error) {
         return toolError(error);
       }
