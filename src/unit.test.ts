@@ -418,6 +418,68 @@ describe("waas profile updates", () => {
     ]);
   });
 
+  it("applies experience helpers: remove_match, rename, fix_dates, set_current, order", () => {
+    const result = applyExperienceUpdates(
+      [
+        {
+          id: 1,
+          employer_name_other: "Wells Fargo",
+          title: "Intern",
+          start_date: "2025-10-01",
+          end_date: null,
+          is_current: true,
+        },
+        {
+          id: 2,
+          employer_name_other: "Child Wasting",
+          title: "Volunteer",
+          start_date: "2024-01-01",
+          end_date: "2024-06-01",
+          is_current: true,
+        },
+        {
+          id: 3,
+          employer_name_other: "Self-Employed",
+          title: "SQL Lineage",
+          start_date: "2025-12-01",
+          end_date: null,
+          is_current: true,
+        },
+        {
+          id: 4,
+          employer_name_other: "Zhang Lab",
+          title: "RA",
+          start_date: "2026-01-01",
+          end_date: null,
+          is_current: true,
+        },
+      ],
+      [],
+      {
+        remove_match: ["Child Wasting"],
+        rename: [{ match: "Self-Employed", company: "SQL Lineage Engine", title: "Independent Project" }],
+        fix_dates: [{ match: "Wells Fargo", start_date: "2026-06", end_date: "2026-08" }],
+        set_current: [
+          { match: "Wells Fargo", currently_work_here: false },
+          { match: "SQL Lineage", currently_work_here: false },
+        ],
+        order: [1, 4, 3],
+      },
+    );
+
+    assert.equal(result.changed, true);
+    assert.equal(result.positions.length, 3);
+    assert.equal(result.positions[0]?.id, 1);
+    assert.equal(result.positions[0]?.start_date, "2026-06-01");
+    assert.equal(result.positions[0]?.end_date, "2026-08-01");
+    assert.equal(result.positions[0]?.is_current, false);
+    assert.equal(result.positions[1]?.id, 4);
+    assert.equal(result.positions[2]?.employer_name_other, "SQL Lineage Engine");
+    assert.equal(result.positions[2]?.title, "Independent Project");
+    assert.equal(result.positions[2]?.is_current, false);
+    assert.ok(result.summary.some((s) => /Removed by match/i.test(s)));
+  });
+
   it("builds share payload without clearing companion fields", () => {
     const result = applyShareUpdate(
       {

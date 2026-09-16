@@ -34,12 +34,40 @@ export type SkillUpdateInput = {
   rating: "beginner" | "intermediate" | "advanced";
 };
 
+export type ExperienceMatchRef = {
+  id?: number;
+  /** Case-insensitive substring match against company or title. */
+  match?: string;
+};
+
+export type ExperienceFixDatesInput = ExperienceMatchRef & {
+  start_date?: string | null;
+  end_date?: string | null;
+};
+
+export type ExperienceSetCurrentInput = ExperienceMatchRef & {
+  currently_work_here: boolean;
+};
+
+export type ExperienceRenameInput = ExperienceMatchRef & {
+  company?: string;
+  title?: string;
+};
+
 export type UpdateProfileInput = {
   dry_run?: boolean;
   experience?: {
     mode?: "replace" | "patch";
     positions?: PositionUpdateInput[];
     remove_ids?: number[];
+    /** Remove entries whose company/title contains any of these strings. */
+    remove_match?: string[];
+    /** Fix start/end dates by id or match. */
+    fix_dates?: ExperienceFixDatesInput[];
+    /** Set/clear “I currently work here” by id or match. */
+    set_current?: ExperienceSetCurrentInput[];
+    /** Rename company and/or title by id or match. */
+    rename?: ExperienceRenameInput[];
     order?: number[];
   };
   education?: EducationUpdateInput;
@@ -123,6 +151,86 @@ export function applyExperienceUpdates(
       }
     }
 
+    if (experience.remove_match?.length) {
+      for (const needle of experience.remove_match) {
+        const indexes = findMatchIndexes(positions, { match: needle });
+        if (indexes.length === 0) {
+          throw new Error(`remove_match “${needle}” matched no experience entries.`);
+        }
+        const removed = indexes.map((i) => positions[i]!);
+        positions = positions.filter((_, i) => !indexes.includes(i));
+        changed = true;
+        summary.push(
+          `Removed by match “${needle}”: ${removed.map((p) => labelPosition(p)).join("; ")}.`,
+        );
+      }
+    }
+
+    if (experience.rename?.length) {
+      for (const op of experience.rename) {
+        const idx = resolveOneIndex(positions, op, "rename");
+        const before = labelPosition(positions[idx]!);
+        if (op.company !== undefined) {
+          positions[idx] = {
+            ...positions[idx],
+            employer_name_other: op.company,
+            employer: null,
+          };
+        }
+        if (op.title !== undefined) {
+          positions[idx] = { ...positions[idx], title: op.title };
+        }
+        changed = true;
+        summary.push(`Renamed ${before} → ${labelPosition(positions[idx]!)}.`);
+      }
+    }
+
+    if (experience.fix_dates?.length) {
+      for (const op of experience.fix_dates) {
+        if (op.start_date === undefined && op.end_date === undefined) {
+          throw new Error("fix_dates entries need start_date and/or end_date.");
+        }
+        const idx = resolveOneIndex(positions, op, "fix_dates");
+        const start =
+          op.start_date !== undefined
+            ? normalizeMonthDate(op.start_date)
+            : ((positions[idx]!.start_date as string | null | undefined) ?? null);
+        let end =
+          op.end_date !== undefined
+            ? normalizeMonthDate(op.end_date)
+            : ((positions[idx]!.end_date as string | null | undefined) ?? null);
+        const currently = Boolean(positions[idx]!.is_current);
+        if (currently && end) {
+          positions[idx] = { ...positions[idx], is_current: false };
+        }
+        positions[idx] = {
+          ...positions[idx],
+          start_date: start,
+          end_date: end,
+          ...(end ? { is_current: false } : {}),
+        };
+        changed = true;
+        summary.push(
+          `Fixed dates on ${labelPosition(positions[idx]!)} → ${start ?? "?"}–${end ?? (positions[idx]!.is_current ? "present" : "?")}.`,
+        );
+      }
+    }
+
+    if (experience.set_current?.length) {
+      for (const op of experience.set_current) {
+        const idx = resolveOneIndex(positions, op, "set_current");
+        positions[idx] = {
+          ...positions[idx],
+          is_current: op.currently_work_here,
+          end_date: op.currently_work_here ? null : positions[idx]!.end_date ?? null,
+        };
+        changed = true;
+        summary.push(
+          `${op.currently_work_here ? "Set" : "Cleared"} current flag on ${labelPosition(positions[idx]!)}.`,
+        );
+      }
+    }
+
     if (experience.positions?.length) {
       if (mode === "replace") {
         positions = experience.positions.map((input, index) =>
@@ -186,6 +294,41 @@ export function applyExperienceUpdates(
   }
 
   return { positions, educations, changed, summary };
+}
+
+function labelPosition(position: RawPosition): string {
+  const company = String(position.employer_name_other || (position.employer as { name?: string } | null)?.name || "?");
+  const title = String(position.title || "?");
+  return `${company} — ${title}`;
+}
+
+function findMatchIndexes(positions: RawPosition[], ref: ExperienceMatchRef): number[] {
+  if (ref.id != null) {
+    const idx = positions.findIndex((p) => Number(p.id) === ref.id);
+    return idx >= 0 ? [idx] : [];
+  }
+  if (!ref.match?.trim()) return [];
+  const needle = ref.match.trim().toLowerCase();
+  return positions
+    .map((p, i) => ({ i, label: labelPosition(p).toLowerCase() }))
+    .filter((row) => row.label.includes(needle))
+    .map((row) => row.i);
+}
+
+function resolveOneIndex(positions: RawPosition[], ref: ExperienceMatchRef, op: string): number {
+  if (ref.id == null && !ref.match?.trim()) {
+    throw new Error(`${op} requires id or match.`);
+  }
+  const indexes = findMatchIndexes(positions, ref);
+  if (indexes.length === 0) {
+    throw new Error(`${op} matched no experience for ${ref.id != null ? `id=${ref.id}` : `match="${ref.match}"`}.`);
+  }
+  if (indexes.length > 1) {
+    throw new Error(
+      `${op} matched ${indexes.length} experiences for match="${ref.match}". Pass id to disambiguate.`,
+    );
+  }
+  return indexes[0]!;
 }
 
 export function applySkillsUpdate(
