@@ -8,7 +8,7 @@ import { fetchCompany } from "./company-client.js";
 import { fetchJobPosting } from "./job-client.js";
 import { loadApplied } from "./tracker.js";
 import { resolveWeeklyQuotaStatus } from "./quota.js";
-import { fetchWaasProfile } from "./profile-client.js";
+import { fetchWaasProfile, fetchWaasProfilePreview } from "./profile-client.js";
 import { parseCompanySlug, parseJobId } from "./waas.js";
 
 export const WORKFLOW = `
@@ -46,6 +46,22 @@ export function registerWaasTools(server: McpServer): void {
     async () => {
       try {
         return toolOk(await fetchWaasProfile());
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "waas_preview_profile",
+    {
+      title: "Preview company-facing profile",
+      description:
+        "Fetch the founder/company-facing rendering of your WAAS profile (same data as the in-app Preview iframe): headline, share copy, pretty experience/education strings, skills, and links. Use after edits to QA without asking the user to click Preview. Requires login.",
+    },
+    async () => {
+      try {
+        return toolOk(await fetchWaasProfilePreview());
       } catch (error) {
         return toolError(error);
       }

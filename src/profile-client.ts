@@ -67,6 +67,7 @@ export type WaasProfile = {
   skills: ProfileSkill[];
   sections: { name: string; title: string; url: string; status: string }[];
   editUrl: string;
+  previewUrl: string;
   previewHint: string;
   fetchedAt: string;
 };
@@ -166,35 +167,9 @@ export function normalizeProfile(
       proudProject: data.proud_project ? String(data.proud_project) : null,
       shared: Boolean(sectionAppProps.shared ?? data.share === "yes"),
     },
-    experience: positions.map((position) => ({
-      id: Number(position.id ?? 0),
-      company: String(position.employer_name_other || position.employer?.name || "Unknown"),
-      title: String(position.title || ""),
-      location: position.location ? String(position.location) : null,
-      startDate: position.start_date ? String(position.start_date) : null,
-      endDate: position.end_date ? String(position.end_date) : null,
-      currentlyWorkHere: Boolean(position.is_current),
-      summary: position.summary ? String(position.summary) : null,
-    })),
-    education: educations.map((edu) => ({
-      id: Number(edu.id ?? 0),
-      school: String(edu.school?.name || edu.school_name_other || "Unknown"),
-      degree: edu.degree ? String(edu.degree) : null,
-      fieldOfStudy: edu.field_of_study ? String(edu.field_of_study) : null,
-      startDate: edu.start_date ? String(edu.start_date) : null,
-      endDate: edu.end_date ? String(edu.end_date) : null,
-      summary: edu.summary ? String(edu.summary) : null,
-    })),
-    skills: topSkills
-      .filter((skill) => skill.value != null)
-      .map((skill) => {
-        const id = Number(skill.value);
-        return {
-          id,
-          name: skillCatalog.get(id) ?? `skill_${id}`,
-          rating: String(skill.rating ?? "unknown"),
-        };
-      }),
+    experience: mapPositions(positions),
+    education: mapEducations(educations),
+    skills: mapSkills(topSkills, skillCatalog),
     sections: (sectionAppProps.sectionInfo ?? []).map((section) => ({
       name: String(section.name ?? ""),
       title: String(section.title ?? ""),
@@ -202,8 +177,100 @@ export function normalizeProfile(
       status: String(section.status ?? ""),
     })),
     editUrl: `${BASE_URL}/application/experience`,
-    previewHint:
-      "Open My Profile and click “Want to know what your profile looks like to YC companies?” (waas_preview_profile coming in #3).",
+    previewUrl: `${BASE_URL}/application/preview`,
+    previewHint: "Use waas_preview_profile to see the company-facing rendering.",
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+export type WaasProfilePreview = {
+  cid: string;
+  dataType: string;
+  previewPageUrl: string;
+  iframeUrl: string;
+  fullName: string;
+  avatarUrl: string | null;
+  headline: {
+    role: string | null;
+    subtypes: string | null;
+    experienceDisplay: string | null;
+    location: string | null;
+    gradDateDisplay: string | null;
+  };
+  share: {
+    shortPhrase: string | null;
+    lookingFor: string | null;
+    proudProject: string | null;
+  };
+  pretty: {
+    positions: string | null;
+    educations: string | null;
+  };
+  experience: ProfileExperience[];
+  education: ProfileEducation[];
+  skills: ProfileSkill[];
+  links: {
+    github: string | null;
+    linkedin: string | null;
+  };
+  fetchedAt: string;
+};
+
+export function normalizeProfilePreview(
+  candidate: {
+    cid?: string;
+    data_type?: string;
+    profile_meta?: { id?: number; short_id?: string };
+    profile?: {
+      full_name?: string;
+      data?: Record<string, unknown>;
+    };
+    data?: Record<string, unknown>;
+  },
+  skillCatalog: Map<number, string> = new Map(),
+  urls?: { previewPageUrl?: string; iframeUrl?: string },
+): WaasProfilePreview {
+  const data = (candidate.data ?? candidate.profile?.data ?? {}) as Record<string, unknown>;
+  const positions = Array.isArray(data.positions) ? (data.positions as RawPosition[]) : [];
+  const educations = Array.isArray(data.educations) ? (data.educations as RawEducation[]) : [];
+  const topSkills = Array.isArray(data.top_skills)
+    ? (data.top_skills as { value?: number; rating?: string }[])
+    : [];
+  const fullName =
+    candidate.profile?.full_name ||
+    `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim() ||
+    String(candidate.profile_meta?.short_id ?? candidate.cid ?? "");
+
+  return {
+    cid: String(candidate.cid ?? candidate.profile_meta?.short_id ?? ""),
+    dataType: String(candidate.data_type ?? "full_candidate"),
+    previewPageUrl: urls?.previewPageUrl ?? `${BASE_URL}/application/preview`,
+    iframeUrl: urls?.iframeUrl ?? `${BASE_URL}/application/preview_iframe`,
+    fullName,
+    avatarUrl: data.avatar_thumb ? String(data.avatar_thumb) : null,
+    headline: {
+      role: data.pretty_role ? String(data.pretty_role) : null,
+      subtypes: data.pretty_subtype ? String(data.pretty_subtype) : null,
+      experienceDisplay: data.experienceDisplay ? String(data.experienceDisplay) : null,
+      location: data.city_current ? String(data.city_current) : null,
+      gradDateDisplay: data.grad_date_display ? String(data.grad_date_display) : null,
+    },
+    share: {
+      shortPhrase: data.short_phrase ? String(data.short_phrase) : null,
+      lookingFor: data.looking_for ? String(data.looking_for) : null,
+      proudProject: data.proud_project ? String(data.proud_project) : null,
+    },
+    pretty: {
+      positions: data.pretty_positions ? String(data.pretty_positions) : null,
+      educations: data.pretty_educations ? String(data.pretty_educations) : null,
+    },
+    experience: mapPositions(positions),
+    education: mapEducations(educations),
+    skills: mapSkills(topSkills, skillCatalog),
+    links: {
+      github: data.github ? String(data.github) : null,
+      linkedin: data.linkedin ? String(data.linkedin) : null,
+    },
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -224,6 +291,92 @@ export async function fetchWaasProfile(): Promise<WaasProfile> {
   }
 
   return normalizeProfile(sectionAppProps, extractSkillCatalog(html));
+}
+
+export async function fetchWaasProfilePreview(): Promise<WaasProfilePreview> {
+  const previewPage = await fetchPage("/application/preview");
+  if (!previewPage.response.ok) {
+    throw new Error(`Failed to load WAAS profile preview (${previewPage.response.status}).`);
+  }
+  const previewProps = readInertiaPage(previewPage.html)?.props ?? {};
+  const iframePath = String(previewProps.previewIframeUrl ?? "/application/preview_iframe");
+  const iframePathOnly = iframePath.startsWith("http")
+    ? new URL(iframePath).pathname
+    : iframePath;
+
+  const iframe = await fetchPage(iframePathOnly);
+  if (!iframe.response.ok) {
+    throw new Error(`Failed to load WAAS preview iframe (${iframe.response.status}).`);
+  }
+
+  const candidate = readInertiaPage(iframe.html)?.props?.candidate as
+    | {
+        cid?: string;
+        data_type?: string;
+        profile_meta?: { id?: number; short_id?: string };
+        profile?: { full_name?: string; data?: Record<string, unknown> };
+        data?: Record<string, unknown>;
+      }
+    | undefined;
+
+  const data = candidate?.data ?? candidate?.profile?.data;
+  if (!candidate || !data) {
+    throw new Error(
+      "Could not parse company-facing profile from /application/preview_iframe. Session may be expired — run npm run login.",
+    );
+  }
+
+  // Skill labels live on the wizard pages; fetch experience HTML for the catalog.
+  const experiencePage = await fetchPage("/application/experience");
+  const skillCatalog = experiencePage.response.ok
+    ? extractSkillCatalog(experiencePage.html)
+    : extractSkillCatalog(iframe.html);
+
+  return normalizeProfilePreview(candidate, skillCatalog, {
+    previewPageUrl: `${BASE_URL}/application/preview`,
+    iframeUrl: iframePath.startsWith("http") ? iframePath : `${BASE_URL}${iframePathOnly}`,
+  });
+}
+
+function mapPositions(positions: RawPosition[]): ProfileExperience[] {
+  return positions.map((position) => ({
+    id: Number(position.id ?? 0),
+    company: String(position.employer_name_other || position.employer?.name || "Unknown"),
+    title: String(position.title || ""),
+    location: position.location ? String(position.location) : null,
+    startDate: position.start_date ? String(position.start_date) : null,
+    endDate: position.end_date ? String(position.end_date) : null,
+    currentlyWorkHere: Boolean(position.is_current),
+    summary: position.summary ? String(position.summary) : null,
+  }));
+}
+
+function mapEducations(educations: RawEducation[]): ProfileEducation[] {
+  return educations.map((edu) => ({
+    id: Number(edu.id ?? 0),
+    school: String(edu.school?.name || edu.school_name_other || "Unknown"),
+    degree: edu.degree ? String(edu.degree) : null,
+    fieldOfStudy: edu.field_of_study ? String(edu.field_of_study) : null,
+    startDate: edu.start_date ? String(edu.start_date) : null,
+    endDate: edu.end_date ? String(edu.end_date) : null,
+    summary: edu.summary ? String(edu.summary) : null,
+  }));
+}
+
+function mapSkills(
+  topSkills: { value?: number; rating?: string }[],
+  skillCatalog: Map<number, string>,
+): ProfileSkill[] {
+  return topSkills
+    .filter((skill) => skill.value != null)
+    .map((skill) => {
+      const id = Number(skill.value);
+      return {
+        id,
+        name: skillCatalog.get(id) ?? `skill_${id}`,
+        rating: String(skill.rating ?? "unknown"),
+      };
+    });
 }
 
 function stringArray(value: unknown): string[] {
