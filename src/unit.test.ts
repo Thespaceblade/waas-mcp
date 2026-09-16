@@ -11,7 +11,7 @@ import {
   weekStartMonday,
   type WaasConversation,
 } from "./quota.js";
-import { extractSkillCatalog, normalizeProfile } from "./profile-client.js";
+import { extractSkillCatalog, normalizeProfile, normalizeProfilePreview } from "./profile-client.js";
 
 describe("buildJobsSearchUrl", () => {
   it("builds role and remote filters", () => {
@@ -260,5 +260,55 @@ describe("waas profile parsing", () => {
     assert.equal(profile.skills[0]?.name, "Python");
     assert.equal(profile.share.shortPhrase, "DS undergrad shipping ML");
     assert.deepEqual(profile.preferences.jobTypes, ["intern"]);
+  });
+
+  it("normalizes company-facing preview payload", () => {
+    const catalog = new Map<number, string>([[107, "Python"]]);
+    const preview = normalizeProfilePreview(
+      {
+        cid: "aAhTm6Hk",
+        data_type: "full_candidate",
+        profile_meta: { id: 1, short_id: "aAhTm6Hk" },
+        data: {
+          first_name: "Jason",
+          last_name: "Charwin",
+          city_current: "Chapel Hill, NC, USA",
+          pretty_role: "Engineering",
+          pretty_subtype: "Data science, Machine learning",
+          experienceDisplay: "<1 year",
+          grad_date_display: "Graduates Jun 2028",
+          short_phrase: "DS undergrad",
+          looking_for: "SWE/ML internship",
+          proud_project: "Brain CNN",
+          pretty_positions: "Intern at Wells Fargo",
+          pretty_educations: "Data Science at UNC",
+          github: "https://github.com/Thespaceblade",
+          avatar_thumb: "https://example.com/avatar.jpg",
+          top_skills: [{ value: 107, rating: "advanced" }],
+          positions: [
+            {
+              id: 10,
+              employer_name_other: "Wells Fargo",
+              title: "Intern",
+              is_current: false,
+            },
+          ],
+          educations: [
+            {
+              id: 20,
+              field_of_study: "Data Science",
+              school: { name: "UNC" },
+            },
+          ],
+        },
+      },
+      catalog,
+    );
+
+    assert.equal(preview.fullName, "Jason Charwin");
+    assert.equal(preview.headline.role, "Engineering");
+    assert.equal(preview.pretty.positions, "Intern at Wells Fargo");
+    assert.equal(preview.skills[0]?.name, "Python");
+    assert.equal(preview.share.shortPhrase, "DS undergrad");
   });
 });
