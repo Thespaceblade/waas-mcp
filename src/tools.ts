@@ -8,6 +8,7 @@ import { fetchCompany } from "./company-client.js";
 import { fetchJobPosting } from "./job-client.js";
 import { loadApplied } from "./tracker.js";
 import { resolveWeeklyQuotaStatus } from "./quota.js";
+import { fetchWaasProfile } from "./profile-client.js";
 import { parseCompanySlug, parseJobId } from "./waas.js";
 
 export const WORKFLOW = `
@@ -33,6 +34,22 @@ export function registerWaasTools(server: McpServer): void {
       description: "Check Work at a Startup login session (~/.waas-mcp/storage-state.json or cookie.txt).",
     },
     async () => toolOk(await checkSessionValid()),
+  );
+
+  server.registerTool(
+    "waas_get_profile",
+    {
+      title: "Get my WAAS profile",
+      description:
+        "Fetch your live Work at a Startup candidate profile: experience, education, skills, share copy (short_phrase / looking_for / proud_project), and role/location preferences. Requires login.",
+    },
+    async () => {
+      try {
+        return toolOk(await fetchWaasProfile());
+      } catch (error) {
+        return toolError(error);
+      }
+    },
   );
 
   server.registerTool(

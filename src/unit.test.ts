@@ -11,6 +11,7 @@ import {
   weekStartMonday,
   type WaasConversation,
 } from "./quota.js";
+import { extractSkillCatalog, normalizeProfile } from "./profile-client.js";
 
 describe("buildJobsSearchUrl", () => {
   it("builds role and remote filters", () => {
@@ -184,5 +185,80 @@ describe("weekly quota", () => {
     );
     assert.ok(msg);
     assert.match(msg, /applications per week/i);
+  });
+});
+
+describe("waas profile parsing", () => {
+  it("extracts skill catalog labels from page HTML", () => {
+    const html = `[{"label":"Python","value":107},{"label":"RAG","value":326}]`;
+    const catalog = extractSkillCatalog(html);
+    assert.equal(catalog.get(107), "Python");
+    assert.equal(catalog.get(326), "RAG");
+  });
+
+  it("normalizes experience, education, skills, and share fields", () => {
+    const catalog = new Map<number, string>([
+      [107, "Python"],
+      [183, "Machine Learning"],
+    ]);
+    const profile = normalizeProfile(
+      {
+        id: 1,
+        short_id: "abc",
+        full_name: "Jason Charwin",
+        shared: true,
+        sectionInfo: [{ name: "experience", title: "Experience", url: "/application/experience", status: "complete" }],
+        data: {
+          first_name: "Jason",
+          last_name: "Charwin",
+          email: "jason@example.com",
+          city_current: "Chapel Hill, NC",
+          github: "https://github.com/Thespaceblade",
+          role: "eng",
+          eng_type: ["ml", "fs"],
+          job_type: ["intern"],
+          remote: "yes",
+          short_phrase: "DS undergrad shipping ML",
+          looking_for: "SWE/ML internship",
+          proud_project: "Brain CNN",
+          top_skills: [
+            { value: 107, rating: "advanced" },
+            { value: 183, rating: "advanced" },
+          ],
+          positions: [
+            {
+              id: 10,
+              employer_name_other: "Wells Fargo",
+              title: "Chief Data Office Intern",
+              location: "Remote",
+              start_date: "2026-06-01",
+              end_date: "2026-08-01",
+              is_current: false,
+              summary: "Built data products.",
+            },
+          ],
+          educations: [
+            {
+              id: 20,
+              degree: "Bachelors",
+              field_of_study: "Data Science",
+              start_date: "2024-08-01",
+              end_date: "2028-06-01",
+              school: { name: "University of North Carolina at Chapel Hill" },
+            },
+          ],
+        },
+      },
+      catalog,
+    );
+
+    assert.equal(profile.fullName, "Jason Charwin");
+    assert.equal(profile.experience.length, 1);
+    assert.equal(profile.experience[0]?.company, "Wells Fargo");
+    assert.equal(profile.experience[0]?.currentlyWorkHere, false);
+    assert.equal(profile.education[0]?.school, "University of North Carolina at Chapel Hill");
+    assert.equal(profile.skills[0]?.name, "Python");
+    assert.equal(profile.share.shortPhrase, "DS undergrad shipping ML");
+    assert.deepEqual(profile.preferences.jobTypes, ["intern"]);
   });
 });
