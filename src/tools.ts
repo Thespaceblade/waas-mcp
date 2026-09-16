@@ -75,7 +75,7 @@ export function registerWaasTools(server: McpServer): void {
     {
       title: "Update WAAS profile",
       description:
-        "Write Experience/Education, Skills, and/or Share fields on your Work at a Startup profile. dry_run=true by default — returns a before/after diff and planned POSTs. Only set dry_run=false after explicit user approval. Requires login.",
+        "Write Experience/Education, Skills, and/or Share on your WAAS profile. Experience helpers: fix_dates, set_current, rename, remove_match, remove_ids, order. dry_run=true by default — returns a before/after diff. Only set dry_run=false after explicit user approval. Requires login.",
       inputSchema: {
         dry_run: z.boolean().optional().describe("Default true — preview diff only; no writes."),
         experience: z
@@ -96,6 +96,39 @@ export function registerWaasTools(server: McpServer): void {
               )
               .optional(),
             remove_ids: z.array(z.number()).optional(),
+            remove_match: z
+              .array(z.string())
+              .optional()
+              .describe("Remove entries whose company/title contains these substrings."),
+            fix_dates: z
+              .array(
+                z.object({
+                  id: z.number().optional(),
+                  match: z.string().optional().describe("Substring match on company/title if id omitted."),
+                  start_date: z.string().nullable().optional(),
+                  end_date: z.string().nullable().optional(),
+                }),
+              )
+              .optional(),
+            set_current: z
+              .array(
+                z.object({
+                  id: z.number().optional(),
+                  match: z.string().optional(),
+                  currently_work_here: z.boolean(),
+                }),
+              )
+              .optional(),
+            rename: z
+              .array(
+                z.object({
+                  id: z.number().optional(),
+                  match: z.string().optional(),
+                  company: z.string().optional(),
+                  title: z.string().optional(),
+                }),
+              )
+              .optional(),
             order: z.array(z.number()).optional().describe("Reorder by existing experience ids."),
           })
           .optional(),
