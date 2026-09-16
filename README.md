@@ -61,6 +61,7 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 | Get my profile | `waas_get_profile` — experience, education, skills, share copy, preferences |
 | Preview as companies see it | `waas_preview_profile` — founder-facing headline, pretty experience/education, share copy |
 | Update profile | `waas_update_profile` — Experience / Education / Skills / Share (**`dry_run=true` default**) |
+| Audit profile | `waas_audit_profile` — gaps, wrong dates, demote/remove, suggested order |
 | `waas_search` | `waas_search` — role, remote, visa, keywords, etc. (`job_type` tightened client-side when WaaS returns mixed results) |
 | Read job | `waas_get_job` |
 | Read company | `waas_get_company` |

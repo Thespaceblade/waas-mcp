@@ -19,6 +19,12 @@ import {
   normalizeMonthDate,
   withEmptyListSentinel,
 } from "./update-profile-client.js";
+import {
+  auditProfileData,
+  parseExpectedNamesFromText,
+  scoreExperience,
+} from "./audit-profile-client.js";
+import type { WaasProfile } from "./profile-client.js";
 
 describe("buildJobsSearchUrl", () => {
   it("builds role and remote filters", () => {
@@ -428,5 +434,105 @@ describe("waas profile updates", () => {
     assert.equal(result.data.looking_for, "old looking");
     assert.equal(result.data.share, "yes");
     assert.equal(result.data.waas_event_apply, null);
+  });
+});
+
+describe("waas profile audit", () => {
+  it("parses expected names from optimized profile markdown", () => {
+    const names = parseExpectedNamesFromText(`
+## Suggested Experience order (top → bottom)
+
+### 1. Wells Fargo — Chief Data Office Intern
+### 2. Zhang Lab, UNC School of Data Science and Society — Research Assistant
+### Optional 8 (if space): TarHeelRatings — Independent Project
+
+## Remove / demote from profile
+
+- **Child Wasting** — weaker than Brain Hemorrhage
+`);
+    assert.ok(names.some((n) => /wells fargo/i.test(n)));
+    assert.ok(names.some((n) => /zhang lab/i.test(n)));
+    assert.ok(names.some((n) => /tarheelratings/i.test(n)));
+    assert.equal(names.some((n) => /child wasting/i.test(n)), false);
+  });
+
+  it("flags wrong dates, weak entries, gaps, and suggests order", () => {
+    const profile: WaasProfile = {
+      profileId: 1,
+      shortId: "x",
+      fullName: "Jason Charwin",
+      email: null,
+      personal: {
+        firstName: "Jason",
+        lastName: "Charwin",
+        location: "Chapel Hill",
+        github: null,
+        linkedin: null,
+        phone: null,
+      },
+      preferences: {
+        role: "eng",
+        engTypes: ["ml"],
+        jobTypes: ["intern"],
+        remote: "yes",
+        relocate: null,
+        relocateTo: [],
+        usAuthorized: null,
+        usVisaSponsorship: null,
+        inSchool: "yes",
+        schoolName: "UNC",
+        gradDate: null,
+        internshipDate: null,
+        salaryMin: null,
+        companySizes: [],
+      },
+      share: {
+        shortPhrase: "hi",
+        lookingFor: null,
+        proudProject: null,
+        shared: true,
+      },
+      experience: [
+        {
+          id: 1,
+          company: "Child Wasting Study",
+          title: "Volunteer",
+          location: null,
+          startDate: "2024-01-01",
+          endDate: "2023-01-01",
+          currentlyWorkHere: true,
+          summary: "Helped out.",
+        },
+        {
+          id: 2,
+          company: "Wells Fargo",
+          title: "Chief Data Office Intern",
+          location: "Remote",
+          startDate: "2026-06-01",
+          endDate: "2026-08-01",
+          currentlyWorkHere: false,
+          summary:
+            "Built full-stack data products in React and Python, enterprise chatbot on Tachyon agentic AI, SQL ETL, $5M/year impact across 1,300 employees.",
+        },
+      ],
+      education: [],
+      skills: [{ id: 107, name: "Python", rating: "intermediate" }],
+      sections: [],
+      editUrl: "",
+      previewUrl: "",
+      previewHint: "",
+      fetchedAt: new Date().toISOString(),
+    };
+
+    const audit = auditProfileData(profile, { expectedNames: ["Zhang Lab", "Kepha Design"] });
+    assert.ok(audit.wrong_dates.some((f) => /before start_date/i.test(f.reason)));
+    assert.ok(audit.wrong_dates.some((f) => /currently work here but end_date/i.test(f.reason)));
+    assert.ok(audit.demote_or_remove.some((f) => /weak/i.test(f.reason)));
+    assert.ok(audit.gaps.some((f) => /Zhang Lab/i.test(f.reason)));
+    assert.ok(audit.gaps.some((f) => /Kepha Design/i.test(f.reason)));
+    assert.ok(audit.gaps.some((f) => /GitHub/i.test(f.reason)));
+    assert.ok(audit.share_notes.some((f) => /looking_for/i.test(f.reason)));
+    assert.equal(audit.suggested_order[0]?.company, "Wells Fargo");
+    assert.ok(scoreExperience(profile.experience[1]!).score > scoreExperience(profile.experience[0]!).score);
   });
 });
