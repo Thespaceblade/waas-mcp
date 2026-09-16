@@ -12,6 +12,13 @@ import {
   type WaasConversation,
 } from "./quota.js";
 import { extractSkillCatalog, normalizeProfile, normalizeProfilePreview } from "./profile-client.js";
+import {
+  applyExperienceUpdates,
+  applyShareUpdate,
+  applySkillsUpdate,
+  normalizeMonthDate,
+  withEmptyListSentinel,
+} from "./update-profile-client.js";
 
 describe("buildJobsSearchUrl", () => {
   it("builds role and remote filters", () => {
@@ -310,5 +317,116 @@ describe("waas profile parsing", () => {
     assert.equal(preview.pretty.positions, "Intern at Wells Fargo");
     assert.equal(preview.skills[0]?.name, "Python");
     assert.equal(preview.share.shortPhrase, "DS undergrad");
+  });
+});
+
+describe("waas profile updates", () => {
+  it("normalizes month dates to YYYY-MM-01", () => {
+    assert.equal(normalizeMonthDate("2028-06"), "2028-06-01");
+    assert.equal(normalizeMonthDate("2028-06-15"), "2028-06-01");
+    assert.equal(normalizeMonthDate(null), null);
+  });
+
+  it("uses [_] sentinel for empty lists", () => {
+    assert.deepEqual(withEmptyListSentinel([]), ["_"]);
+    assert.deepEqual(withEmptyListSentinel([{ id: 1 }]), [{ id: 1 }]);
+  });
+
+  it("patches experience, clears end_date when currently working, and updates education", () => {
+    const result = applyExperienceUpdates(
+      [
+        {
+          id: 1,
+          employer_name_other: "Wells Fargo",
+          title: "Intern",
+          start_date: "2026-06-01",
+          end_date: "2026-08-01",
+          is_current: false,
+        },
+        {
+          id: 2,
+          employer_name_other: "Old Co",
+          title: "Weak",
+          start_date: "2020-01-01",
+          end_date: "2020-06-01",
+          is_current: false,
+        },
+      ],
+      [
+        {
+          id: 10,
+          degree: "Bachelors",
+          field_of_study: "Data Science",
+          start_date: "2024-08-01",
+          end_date: "2027-05-01",
+          school: { id: 8846, name: "UNC" },
+        },
+      ],
+      {
+        mode: "patch",
+        remove_ids: [2],
+        positions: [
+          {
+            id: 1,
+            currently_work_here: true,
+            title: "Chief Data Office Intern",
+          },
+          {
+            company: "Zhang Lab",
+            title: "Researcher",
+            start_date: "2025-01",
+            currently_work_here: true,
+            summary: "ML research",
+          },
+        ],
+      },
+      { end_date: "2028-06" },
+    );
+
+    assert.equal(result.changed, true);
+    assert.equal(result.positions.length, 2);
+    assert.equal(result.positions[0]?.is_current, true);
+    assert.equal(result.positions[0]?.end_date, null);
+    assert.equal(result.positions[0]?.title, "Chief Data Office Intern");
+    assert.equal(result.positions[1]?.employer_name_other, "Zhang Lab");
+    assert.equal(result.positions[1]?.temp_id != null, true);
+    assert.equal(result.educations[0]?.end_date, "2028-06-01");
+  });
+
+  it("replaces skills by name via catalog", () => {
+    const catalog = new Map<number, string>([
+      [107, "Python"],
+      [183, "Machine Learning"],
+    ]);
+    const result = applySkillsUpdate([{ value: 99, rating: "beginner" }], catalog, {
+      mode: "replace",
+      items: [
+        { name: "Python", rating: "advanced" },
+        { id: 183, rating: "intermediate" },
+      ],
+    });
+    assert.equal(result.changed, true);
+    assert.deepEqual(result.top_skills, [
+      { value: 107, rating: "advanced" },
+      { value: 183, rating: "intermediate" },
+    ]);
+  });
+
+  it("builds share payload without clearing companion fields", () => {
+    const result = applyShareUpdate(
+      {
+        short_phrase: "old",
+        looking_for: "old looking",
+        proud_project: "old proud",
+        share: "yes",
+        waas_event_apply: null,
+      },
+      { short_phrase: "new phrase" },
+    );
+    assert.equal(result.changed, true);
+    assert.equal(result.data.short_phrase, "new phrase");
+    assert.equal(result.data.looking_for, "old looking");
+    assert.equal(result.data.share, "yes");
+    assert.equal(result.data.waas_event_apply, null);
   });
 });

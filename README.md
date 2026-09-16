@@ -60,6 +60,7 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 | Check weekly cap | `waas_application_quota` — 10 in-app applications/week (Monday reset); also on `waas_search` / `waas_inspect_application` as `weeklyQuota` |
 | Get my profile | `waas_get_profile` — experience, education, skills, share copy, preferences |
 | Preview as companies see it | `waas_preview_profile` — founder-facing headline, pretty experience/education, share copy |
+| Update profile | `waas_update_profile` — Experience / Education / Skills / Share (**`dry_run=true` default**) |
 | `waas_search` | `waas_search` — role, remote, visa, keywords, etc. (`job_type` tightened client-side when WaaS returns mixed results) |
 | Read job | `waas_get_job` |
 | Read company | `waas_get_company` |

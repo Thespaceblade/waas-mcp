@@ -75,6 +75,58 @@ export async function postInertia(
   });
 }
 
+/** Extract Laravel CSRF token from a wizard HTML page. */
+export function extractCsrfToken(html: string): string {
+  const meta = html.match(/name=["']csrf-token["']\s+content=["']([^"']+)["']/i)
+    ?? html.match(/content=["']([^"']+)["']\s+name=["']csrf-token["']/i);
+  if (!meta?.[1]) {
+    throw new Error("Could not find CSRF token on WAAS application page.");
+  }
+  return meta[1];
+}
+
+/**
+ * Profile wizard save: plain JSON POST to /application (not Inertia).
+ * Body shape: { from: section, profile: { data: sectionFields } }
+ */
+export async function postApplicationSection(
+  from: string,
+  data: Record<string, unknown>,
+  csrfToken: string,
+  path = "/application",
+): Promise<{ response: Response; json: Record<string, unknown> | null; text: string }> {
+  const sessionCookie = await resolveSessionCookie();
+  const response = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      cookie: sessionCookie,
+      "user-agent": "waas-mcp",
+      accept: "application/json, text/plain, */*",
+      "content-type": "application/json",
+      "x-csrf-token": csrfToken,
+      "x-requested-with": "XMLHttpRequest",
+    },
+    body: JSON.stringify({ from, profile: { data } }),
+  });
+
+  const text = await response.text();
+  let json: Record<string, unknown> | null = null;
+  try {
+    json = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+  } catch {
+    json = null;
+  }
+
+  if (bouncedToSignIn(response) || response.status === 401 || response.status === 403) {
+    throw new Error(
+      "workatastartup.com rejected the profile write (auth). Session may be expired — run npm run login.",
+    );
+  }
+
+  return { response, json, text };
+}
+
 function bouncedToSignIn(response: Response): boolean {
   const { hostname, pathname } = new URL(response.url);
   if (hostname === "account.ycombinator.com") return true;
