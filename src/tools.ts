@@ -9,6 +9,7 @@ import { fetchJobPosting } from "./job-client.js";
 import { loadApplied } from "./tracker.js";
 import { resolveWeeklyQuotaStatus } from "./quota.js";
 import { fetchWaasProfile, fetchWaasProfilePreview } from "./profile-client.js";
+import { updateWaasProfile } from "./update-profile-client.js";
 import { parseCompanySlug, parseJobId } from "./waas.js";
 
 export const WORKFLOW = `
@@ -62,6 +63,78 @@ export function registerWaasTools(server: McpServer): void {
     async () => {
       try {
         return toolOk(await fetchWaasProfilePreview());
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "waas_update_profile",
+    {
+      title: "Update WAAS profile",
+      description:
+        "Write Experience/Education, Skills, and/or Share fields on your Work at a Startup profile. dry_run=true by default — returns a before/after diff and planned POSTs. Only set dry_run=false after explicit user approval. Requires login.",
+      inputSchema: {
+        dry_run: z.boolean().optional().describe("Default true — preview diff only; no writes."),
+        experience: z
+          .object({
+            mode: z.enum(["replace", "patch"]).optional().describe("replace = full ordered list; patch = upsert by id / append."),
+            positions: z
+              .array(
+                z.object({
+                  id: z.number().optional().describe("Existing experience id; omit to create."),
+                  company: z.string().optional(),
+                  title: z.string().optional(),
+                  location: z.string().nullable().optional(),
+                  start_date: z.string().nullable().optional().describe("YYYY-MM or YYYY-MM-01"),
+                  end_date: z.string().nullable().optional(),
+                  currently_work_here: z.boolean().optional(),
+                  summary: z.string().nullable().optional(),
+                }),
+              )
+              .optional(),
+            remove_ids: z.array(z.number()).optional(),
+            order: z.array(z.number()).optional().describe("Reorder by existing experience ids."),
+          })
+          .optional(),
+        education: z
+          .object({
+            id: z.number().optional(),
+            school: z.string().optional(),
+            degree: z.string().nullable().optional(),
+            field_of_study: z.string().nullable().optional(),
+            start_date: z.string().nullable().optional(),
+            end_date: z.string().nullable().optional().describe("e.g. 2028-06 for Jun 2028"),
+            summary: z.string().nullable().optional(),
+          })
+          .optional(),
+        skills: z
+          .object({
+            mode: z.literal("replace").optional(),
+            items: z
+              .array(
+                z.object({
+                  id: z.number().optional().describe("Catalog skill id from waas_get_profile"),
+                  name: z.string().optional().describe("Resolved via skill catalog if id omitted"),
+                  rating: z.enum(["beginner", "intermediate", "advanced"]),
+                }),
+              )
+              .max(10),
+          })
+          .optional(),
+        share: z
+          .object({
+            short_phrase: z.string().optional(),
+            looking_for: z.string().optional(),
+            proud_project: z.string().optional(),
+          })
+          .optional(),
+      },
+    },
+    async (args) => {
+      try {
+        return toolOk(await updateWaasProfile(args));
       } catch (error) {
         return toolError(error);
       }
