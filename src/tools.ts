@@ -145,7 +145,10 @@ export function registerWaasTools(server: McpServer): void {
           .optional(),
         skills: z
           .object({
-            mode: z.literal("replace").optional(),
+            mode: z
+              .enum(["replace", "merge"])
+              .optional()
+              .describe('replace = full list (default); merge = upsert/remove into existing.'),
             items: z
               .array(
                 z.object({
@@ -154,14 +157,17 @@ export function registerWaasTools(server: McpServer): void {
                   rating: z.enum(["beginner", "intermediate", "advanced"]),
                 }),
               )
-              .max(10),
+              .max(10)
+              .optional(),
+            remove_ids: z.array(z.number()).optional().describe('Requires mode="merge".'),
+            remove_names: z.array(z.string()).optional().describe('Requires mode="merge".'),
           })
           .optional(),
         share: z
           .object({
-            short_phrase: z.string().optional(),
-            looking_for: z.string().optional(),
-            proud_project: z.string().optional(),
+            short_phrase: z.string().optional().describe("Headline; validated (≥40 chars, not a single skill name)."),
+            looking_for: z.string().optional().describe("What you're looking for (≥80 chars)."),
+            proud_project: z.string().optional().describe("Proud project story (≥60 chars)."),
           })
           .optional(),
       },
@@ -169,6 +175,73 @@ export function registerWaasTools(server: McpServer): void {
     async (args) => {
       try {
         return toolOk(await updateWaasProfile(args));
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "waas_edit_share",
+    {
+      title: "Edit Share copy",
+      description:
+        "Update short_phrase / looking_for / proud_project with validation. dry_run=true by default. Same write path as waas_update_profile share fields. Requires login.",
+      inputSchema: {
+        dry_run: z.boolean().optional().describe("Default true — preview only."),
+        short_phrase: z.string().optional(),
+        looking_for: z.string().optional(),
+        proud_project: z.string().optional(),
+      },
+    },
+    async ({ dry_run, short_phrase, looking_for, proud_project }) => {
+      try {
+        if (short_phrase === undefined && looking_for === undefined && proud_project === undefined) {
+          throw new Error("Provide at least one of: short_phrase, looking_for, proud_project.");
+        }
+        return toolOk(
+          await updateWaasProfile({
+            dry_run,
+            share: { short_phrase, looking_for, proud_project },
+          }),
+        );
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "waas_edit_skills",
+    {
+      title: "Edit top skills",
+      description:
+        "Replace or merge WAAS top skills (max 10) with beginner|intermediate|advanced ratings. dry_run=true by default. Requires login.",
+      inputSchema: {
+        dry_run: z.boolean().optional().describe("Default true — preview only."),
+        mode: z.enum(["replace", "merge"]).optional().describe("Default replace."),
+        items: z
+          .array(
+            z.object({
+              id: z.number().optional(),
+              name: z.string().optional(),
+              rating: z.enum(["beginner", "intermediate", "advanced"]),
+            }),
+          )
+          .max(10)
+          .optional(),
+        remove_ids: z.array(z.number()).optional(),
+        remove_names: z.array(z.string()).optional(),
+      },
+    },
+    async ({ dry_run, mode, items, remove_ids, remove_names }) => {
+      try {
+        return toolOk(
+          await updateWaasProfile({
+            dry_run,
+            skills: { mode, items, remove_ids, remove_names },
+          }),
+        );
       } catch (error) {
         return toolError(error);
       }
