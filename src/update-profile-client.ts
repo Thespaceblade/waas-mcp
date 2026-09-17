@@ -72,8 +72,13 @@ export type UpdateProfileInput = {
   };
   education?: EducationUpdateInput;
   skills?: {
-    mode?: "replace";
-    items: SkillUpdateInput[];
+    /** replace = full list (default); merge = upsert into existing. */
+    mode?: "replace" | "merge";
+    items?: SkillUpdateInput[];
+    /** Remove skills by catalog id (merge or replace-after-remove). */
+    remove_ids?: number[];
+    /** Remove skills by name (case-insensitive). */
+    remove_names?: string[];
   };
   share?: {
     short_phrase?: string;
@@ -116,6 +121,10 @@ export type UpdateProfileResult = {
 
 const MAX_SKILLS = 10;
 const SKILL_RATINGS = new Set(["beginner", "intermediate", "advanced"]);
+const SHORT_PHRASE_MIN = 40;
+const LOOKING_FOR_MIN = 80;
+const PROUD_PROJECT_MIN = 60;
+const BROKEN_SHORT_PHRASE = /^(react|python|typescript|javascript|swift|java|ml|ai|rag|intern|student|engineer|developer)$/i;
 
 export function normalizeMonthDate(value: string | null | undefined): string | null {
   if (value == null || value === "") return null;
@@ -331,16 +340,54 @@ function resolveOneIndex(positions: RawPosition[], ref: ExperienceMatchRef, op: 
   return indexes[0]!;
 }
 
+export function validateShareCopy(share: {
+  short_phrase?: string;
+  looking_for?: string;
+  proud_project?: string;
+}): string[] {
+  const errors: string[] = [];
+
+  if (share.short_phrase !== undefined) {
+    const phrase = share.short_phrase.trim();
+    if (!phrase) {
+      errors.push("short_phrase cannot be empty.");
+    } else if (BROKEN_SHORT_PHRASE.test(phrase) || phrase.split(/\s+/).length < 4) {
+      errors.push(
+        `short_phrase looks broken (“${phrase.slice(0, 40)}”). Use a full headline (≥${SHORT_PHRASE_MIN} chars, not a single skill name).`,
+      );
+    } else if (phrase.length < SHORT_PHRASE_MIN) {
+      errors.push(`short_phrase is too short (${phrase.length} < ${SHORT_PHRASE_MIN}).`);
+    }
+  }
+
+  if (share.looking_for !== undefined) {
+    const text = share.looking_for.trim();
+    if (!text) {
+      errors.push("looking_for cannot be empty.");
+    } else if (text.length < LOOKING_FOR_MIN) {
+      errors.push(`looking_for is too short (${text.length} < ${LOOKING_FOR_MIN}).`);
+    }
+  }
+
+  if (share.proud_project !== undefined) {
+    const text = share.proud_project.trim();
+    if (!text) {
+      errors.push("proud_project cannot be empty.");
+    } else if (text.length < PROUD_PROJECT_MIN) {
+      errors.push(`proud_project is too short (${text.length} < ${PROUD_PROJECT_MIN}).`);
+    }
+  }
+
+  return errors;
+}
+
 export function applySkillsUpdate(
   current: RawSkill[],
   skillCatalog: Map<number, string>,
   skills?: UpdateProfileInput["skills"],
 ): { top_skills: RawSkill[]; changed: boolean; summary: string[] } {
-  if (!skills?.items) {
+  if (!skills || (!skills.items?.length && !skills.remove_ids?.length && !skills.remove_names?.length)) {
     return { top_skills: current, changed: false, summary: [] };
-  }
-  if (skills.items.length > MAX_SKILLS) {
-    throw new Error(`Skills max is ${MAX_SKILLS}; got ${skills.items.length}.`);
   }
 
   const nameToId = new Map<string, number>();
@@ -348,7 +395,7 @@ export function applySkillsUpdate(
     nameToId.set(name.toLowerCase(), id);
   }
 
-  const next: RawSkill[] = skills.items.map((item) => {
+  const resolveItem = (item: SkillUpdateInput): RawSkill => {
     if (!SKILL_RATINGS.has(item.rating)) {
       throw new Error(`Invalid skill rating "${item.rating}". Use beginner|intermediate|advanced.`);
     }
@@ -361,7 +408,60 @@ export function applySkillsUpdate(
       }
     }
     return { value: id, rating: item.rating };
-  });
+  };
+
+  const mode = skills.mode ?? "replace";
+  let next: RawSkill[];
+  const summary: string[] = [];
+
+  if (mode === "merge") {
+    next = current.map((s) => ({ ...s }));
+    const removeIds = new Set(skills.remove_ids ?? []);
+    for (const name of skills.remove_names ?? []) {
+      const id = nameToId.get(name.toLowerCase());
+      if (id == null) throw new Error(`Unknown skill name to remove: "${name}".`);
+      removeIds.add(id);
+    }
+    if (removeIds.size) {
+      const before = next.length;
+      next = next.filter((s) => !removeIds.has(Number(s.value)));
+      if (next.length !== before) {
+        summary.push(`Removed ${before - next.length} skill(s).`);
+      }
+    }
+    for (const item of skills.items ?? []) {
+      const resolved = resolveItem(item);
+      const idx = next.findIndex((s) => Number(s.value) === Number(resolved.value));
+      if (idx >= 0) {
+        next[idx] = resolved;
+        summary.push(
+          `Updated skill ${skillCatalog.get(Number(resolved.value)) ?? resolved.value} → ${resolved.rating}.`,
+        );
+      } else {
+        next.push(resolved);
+        summary.push(
+          `Added skill ${skillCatalog.get(Number(resolved.value)) ?? resolved.value} (${resolved.rating}).`,
+        );
+      }
+    }
+  } else {
+    if (skills.remove_ids?.length || skills.remove_names?.length) {
+      throw new Error('remove_ids/remove_names require skills.mode="merge" (or omit them and send a full replace list).');
+    }
+    if (!skills.items?.length) {
+      throw new Error("skills.replace requires items[] (max 10).");
+    }
+    next = skills.items.map(resolveItem);
+    summary.push(
+      `Replace skills (${next.length}): ${next
+        .map((s) => `${skillCatalog.get(Number(s.value)) ?? `skill_${s.value}`} (${s.rating})`)
+        .join(", ")}`,
+    );
+  }
+
+  if (next.length > MAX_SKILLS) {
+    throw new Error(`Skills max is ${MAX_SKILLS}; got ${next.length}.`);
+  }
 
   const beforeKey = JSON.stringify(current.map((s) => [s.value, s.rating]));
   const afterKey = JSON.stringify(next.map((s) => [s.value, s.rating]));
@@ -369,15 +469,7 @@ export function applySkillsUpdate(
     return { top_skills: current, changed: false, summary: [] };
   }
 
-  const labels = next.map((s) => {
-    const name = skillCatalog.get(Number(s.value)) ?? `skill_${s.value}`;
-    return `${name} (${s.rating})`;
-  });
-  return {
-    top_skills: next,
-    changed: true,
-    summary: [`Replace skills (${next.length}): ${labels.join(", ")}`],
-  };
+  return { top_skills: next, changed: true, summary };
 }
 
 export function applyShareUpdate(
@@ -396,6 +488,11 @@ export function applyShareUpdate(
       changed: false,
       summary: [],
     };
+  }
+
+  const validationErrors = validateShareCopy(share);
+  if (validationErrors.length) {
+    throw new Error(`Share validation failed: ${validationErrors.join(" ")}`);
   }
 
   const next = {

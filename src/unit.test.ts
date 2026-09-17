@@ -17,6 +17,7 @@ import {
   applyShareUpdate,
   applySkillsUpdate,
   normalizeMonthDate,
+  validateShareCopy,
   withEmptyListSentinel,
 } from "./update-profile-client.js";
 import {
@@ -489,13 +490,45 @@ describe("waas profile updates", () => {
         share: "yes",
         waas_event_apply: null,
       },
-      { short_phrase: "new phrase" },
+      {
+        short_phrase:
+          "Data Science undergrad shipping agentic AI, RAG, and full-stack ML systems",
+      },
     );
     assert.equal(result.changed, true);
-    assert.equal(result.data.short_phrase, "new phrase");
+    assert.match(String(result.data.short_phrase), /Data Science undergrad/);
     assert.equal(result.data.looking_for, "old looking");
     assert.equal(result.data.share, "yes");
     assert.equal(result.data.waas_event_apply, null);
+  });
+
+  it("rejects broken short_phrase and supports skills merge", () => {
+    assert.ok(validateShareCopy({ short_phrase: "React" }).length > 0);
+    assert.equal(
+      validateShareCopy({
+        short_phrase: "Data Science undergrad shipping agentic AI and full-stack ML",
+      }).length,
+      0,
+    );
+
+    const catalog = new Map<number, string>([
+      [107, "Python"],
+      [183, "Machine Learning"],
+      [99, "PostgreSQL"],
+    ]);
+    const merged = applySkillsUpdate([{ value: 99, rating: "beginner" }], catalog, {
+      mode: "merge",
+      remove_names: ["PostgreSQL"],
+      items: [
+        { name: "Python", rating: "advanced" },
+        { id: 183, rating: "advanced" },
+      ],
+    });
+    assert.equal(merged.changed, true);
+    assert.deepEqual(merged.top_skills, [
+      { value: 107, rating: "advanced" },
+      { value: 183, rating: "advanced" },
+    ]);
   });
 });
 
