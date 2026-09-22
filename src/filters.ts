@@ -61,7 +61,7 @@ export function buildCompaniesSearchUrl(filters: WaasSearchFilters = {}): string
     layout: filters.layout ?? "list-compact",
     sortBy: filters.sort_by ?? "created_desc",
     tab: "any",
-    usVisa: filters.us_visa ?? "any",
+    usVisaNotRequired: filters.us_visa ?? "any",
   });
   if (filters.role) params.set("role", filters.role);
   if (filters.query) params.set("query", filters.query);
@@ -88,7 +88,7 @@ function buildQuerySuffix(filters: WaasSearchFilters, skipRole: boolean): string
 }
 
 const JOB_TYPE_PATTERNS: Record<NonNullable<WaasSearchFilters["job_type"]>, RegExp> = {
-  fulltime: /^full\s*time$/i,
+  fulltime: /^full[\s-]*time$/i,
   intern: /^intern(ship)?$/i,
   cofounder: /^co[- ]?founder$/i,
   contract: /^contract$/i,
