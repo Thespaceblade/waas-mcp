@@ -63,6 +63,7 @@ Install `waas-mcp.mcpb` via Claude Desktop → Settings → Extensions. Then run
 | Update profile | `waas_update_profile` — Experience helpers + Skills / Share (**`dry_run=true` default**) |
 | Edit Share | `waas_edit_share` — short_phrase / looking_for / proud_project with validation |
 | Edit Skills | `waas_edit_skills` — replace or merge top skills (max 10) |
+| Draft optimized profile | `waas_draft_profile` — from local resume/optimized markdown → `update_payload` (no live write) |
 | Audit profile | `waas_audit_profile` — gaps, wrong dates, demote/remove, suggested order |
 | `waas_search` | `waas_search` — role, remote, visa, keywords, etc. (`job_type` tightened client-side when WaaS returns mixed results) |
 | Read job | `waas_get_job` |

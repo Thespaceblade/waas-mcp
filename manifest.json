@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "waas-mcp",
   "display_name": "Work at a Startup (WaaS)",
-  "version": "0.2.11",
+  "version": "0.2.12",
   "description": "Search, inspect, and apply to YC Work at a Startup jobs from your AI assistant.",
   "long_description": "MCP server for [Work at a Startup](https://www.workatastartup.com) — YC's job board.\n\n**Search** with structured filters (role, remote, visa, keywords). **Inspect** each application for custom questions, resume URLs, and external apply links. **Track weekly quota** (10 in-app applications/week). **Submit** with dry-run safety by default.\n\n**Before applying**, sign in once from a terminal in the extension folder:\n\n```bash\nnpm run login\n```\n\nSession is saved to `~/.waas-mcp/storage-state.json`.",
   "author": {
@@ -73,9 +73,14 @@
       "description": "Replace or merge top skills with ratings (max 10, dry_run=true by default)."
     },
     {
+      "name": "waas_draft_profile",
+      "description": "Draft optimized Experience/Share/Skills payload from local resume or WAAS markdown (no live write)."
+    },
+    {
       "name": "waas_audit_profile",
       "description": "Diagnose weak/missing/wrong profile entries; returns gaps, dates, demote list, suggested order."
-    },    {
+    },
+    {
       "name": "waas_application_quota",
       "description": "Check weekly in-app application cap (10/week) and remaining quota."
     },
