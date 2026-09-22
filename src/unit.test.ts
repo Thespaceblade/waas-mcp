@@ -25,6 +25,11 @@ import {
   parseExpectedNamesFromText,
   scoreExperience,
 } from "./audit-profile-client.js";
+import {
+  buildUpdatePayloadFromDraft,
+  parseHumanMonth,
+  parseOptimizedWaasDraft,
+} from "./draft-profile-client.js";
 import type { WaasProfile } from "./profile-client.js";
 
 describe("buildJobsSearchUrl", () => {
@@ -629,5 +634,89 @@ describe("waas profile audit", () => {
     assert.ok(audit.share_notes.some((f) => /looking_for/i.test(f.reason)));
     assert.equal(audit.suggested_order[0]?.company, "Wells Fargo");
     assert.ok(scoreExperience(profile.experience[1]!).score > scoreExperience(profile.experience[0]!).score);
+  });
+});
+
+describe("waas profile draft", () => {
+  it("parses human months and optimized WAAS markdown drafts", () => {
+    assert.equal(parseHumanMonth("June 2026"), "2026-06");
+    assert.equal(parseHumanMonth("2028-06"), "2028-06");
+
+    const parsed = parseOptimizedWaasDraft(`
+## Suggested Experience order (top → bottom)
+
+### 1. Wells Fargo — Chief Data Office Intern
+- Location: Remote
+- From: **June 2026** → To: **August 2026** (do NOT mark current unless you are still there)
+- Paste:
+
+\`\`\`
+Built full-stack data products end-to-end.
+\`\`\`
+
+### 2. Zhang Lab — Research Assistant
+- From: **January 2026** → check **I currently work here**
+- Paste:
+
+\`\`\`
+PyTorch genomics research.
+\`\`\`
+
+### Optional 8 (if space): TarHeelRatings — Independent Project
+- From: **March 2026** → To: **July 2026**
+- Paste:
+
+\`\`\`
+Chrome extension with 2,000+ users.
+\`\`\`
+
+## Remove / demote from profile
+
+- **Child Wasting** — weaker than Brain Hemorrhage.
+
+## Education
+
+- University of North Carolina at Chapel Hill
+- Data Science, Bachelor's
+- From: August 2024 → To: **June 2028**
+
+## Share section
+
+**Short phrase:**
+Data Science undergrad at UNC shipping agentic AI, RAG, and full-stack ML systems
+
+**Looking for:**
+I'm a Data Science undergrad at UNC Chapel Hill graduating June 2028 seeking a SWE/ML internship with production ownership on a small team shipping real systems.
+
+**Proud project:**
+The project I'm proudest of is a brain-hemorrhage CNN with 96% validation accuracy and a Streamlit UI for non-technical users.
+
+## Skills
+
+| Skill | Rating |
+|-------|--------|
+| Python | Advanced |
+| Machine Learning | Advanced |
+| RAG | Intermediate |
+`);
+
+    assert.equal(parsed.experience.length, 3);
+    assert.equal(parsed.experience[0]?.company, "Wells Fargo");
+    assert.equal(parsed.experience[0]?.start_date, "2026-06");
+    assert.equal(parsed.experience[0]?.end_date, "2026-08");
+    assert.equal(parsed.experience[0]?.currently_work_here, false);
+    assert.equal(parsed.experience[1]?.currently_work_here, true);
+    assert.equal(parsed.experience[2]?.optional, true);
+    assert.ok(parsed.remove.includes("Child Wasting"));
+    assert.equal(parsed.education?.end_date, "2028-06");
+    assert.equal(parsed.skills[0]?.name, "Python");
+    assert.equal(parsed.skills[0]?.rating, "advanced");
+    assert.match(parsed.share.short_phrase ?? "", /Data Science undergrad/);
+
+    const built = buildUpdatePayloadFromDraft(parsed, null, { include_optional: false });
+    assert.equal(built.update_payload.dry_run, true);
+    assert.equal(built.update_payload.experience?.positions?.length, 2);
+    assert.ok(built.remove_list.includes("Child Wasting"));
+    assert.equal(built.update_payload.skills?.items?.length, 3);
   });
 });

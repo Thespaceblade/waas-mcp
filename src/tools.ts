@@ -11,6 +11,7 @@ import { resolveWeeklyQuotaStatus } from "./quota.js";
 import { fetchWaasProfile, fetchWaasProfilePreview } from "./profile-client.js";
 import { updateWaasProfile } from "./update-profile-client.js";
 import { auditWaasProfile } from "./audit-profile-client.js";
+import { draftWaasProfile } from "./draft-profile-client.js";
 import { parseCompanySlug, parseJobId } from "./waas.js";
 
 export const WORKFLOW = `
@@ -242,6 +243,35 @@ export function registerWaasTools(server: McpServer): void {
             skills: { mode, items, remove_ids, remove_names },
           }),
         );
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "waas_draft_profile",
+    {
+      title: "Draft optimized profile",
+      description:
+        "Build a paste-ready Experience/Education/Share/Skills update payload from local optimized WAAS markdown drafts and/or resume/bank files. Does not write live — returns update_payload for waas_update_profile dry_run. Requires login only when compare_live is true (default).",
+      inputSchema: {
+        source_paths: z
+          .array(z.string())
+          .describe("Paths to waas_profile_optimized_*.md and/or resume/bank .md/.tex/.txt files."),
+        include_optional: z
+          .boolean()
+          .optional()
+          .describe("Include Optional N experience entries from the draft (default false)."),
+        compare_live: z
+          .boolean()
+          .optional()
+          .describe("Match draft entries to live profile ids (default true)."),
+      },
+    },
+    async (args) => {
+      try {
+        return toolOk(await draftWaasProfile(args));
       } catch (error) {
         return toolError(error);
       }
