@@ -11,7 +11,7 @@ import {
   weekStartMonday,
   type WaasConversation,
 } from "./quota.js";
-import { extractSkillCatalog, normalizeProfile, normalizeProfilePreview } from "./profile-client.js";
+import { extractSkillCatalog, formatPhoneNumber, normalizeProfile, normalizeProfilePreview } from "./profile-client.js";
 import {
   applyExperienceUpdates,
   applyShareUpdate,
@@ -208,6 +208,12 @@ describe("weekly quota", () => {
 });
 
 describe("waas profile parsing", () => {
+  it("formats structured phone_number objects", () => {
+    assert.equal(formatPhoneNumber({ phone_country_code: "1", phone_number: "9806809658" }), "+1 9806809658");
+    assert.equal(formatPhoneNumber("555-0100"), "555-0100");
+    assert.equal(formatPhoneNumber(null), null);
+  });
+
   it("extracts skill catalog labels from page HTML", () => {
     const html = `[{"label":"Python","value":107},{"label":"RAG","value":326}]`;
     const catalog = extractSkillCatalog(html);

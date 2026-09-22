@@ -141,7 +141,7 @@ export function normalizeProfile(
       location: data.city_current ? String(data.city_current) : null,
       github: data.github ? String(data.github) : null,
       linkedin: data.linkedin ? String(data.linkedin) : null,
-      phone: data.phone_number ? String(data.phone_number) : null,
+      phone: formatPhoneNumber(data.phone_number),
     },
     preferences: {
       role: data.role ? String(data.role) : null,
@@ -382,4 +382,29 @@ function mapSkills(
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.map(String);
+}
+
+/** WAAS often stores phone as { phone_country_code, phone_number }. */
+export function formatPhoneNumber(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    return text || null;
+  }
+  if (typeof value === "object") {
+    const obj = value as {
+      phone_country_code?: string | number | null;
+      phone_number?: string | number | null;
+      number?: string | number | null;
+      e164?: string | null;
+    };
+    if (obj.e164) return String(obj.e164);
+    const national = obj.phone_number ?? obj.number;
+    if (national == null || national === "") return null;
+    const cc = obj.phone_country_code;
+    return cc != null && String(cc).trim() !== ""
+      ? `+${String(cc).replace(/^\+/, "")} ${String(national)}`
+      : String(national);
+  }
+  return null;
 }
