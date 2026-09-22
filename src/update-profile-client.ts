@@ -200,27 +200,31 @@ export function applyExperienceUpdates(
           throw new Error("fix_dates entries need start_date and/or end_date.");
         }
         const idx = resolveOneIndex(positions, op, "fix_dates");
+        const before = positions[idx]!;
         const start =
           op.start_date !== undefined
             ? normalizeMonthDate(op.start_date)
-            : ((positions[idx]!.start_date as string | null | undefined) ?? null);
+            : ((before.start_date as string | null | undefined) ?? null);
         let end =
           op.end_date !== undefined
             ? normalizeMonthDate(op.end_date)
-            : ((positions[idx]!.end_date as string | null | undefined) ?? null);
-        const currently = Boolean(positions[idx]!.is_current);
-        if (currently && end) {
-          positions[idx] = { ...positions[idx], is_current: false };
-        }
+            : ((before.end_date as string | null | undefined) ?? null);
+        let isCurrent = Boolean(before.is_current);
+        if (isCurrent && end) isCurrent = false;
+        if (end) isCurrent = false;
+        const sameStart = String(before.start_date ?? "") === String(start ?? "");
+        const sameEnd = String(before.end_date ?? "") === String(end ?? "");
+        const sameCurrent = Boolean(before.is_current) === isCurrent;
+        if (sameStart && sameEnd && sameCurrent) continue;
         positions[idx] = {
-          ...positions[idx],
+          ...before,
           start_date: start,
           end_date: end,
-          ...(end ? { is_current: false } : {}),
+          is_current: isCurrent,
         };
         changed = true;
         summary.push(
-          `Fixed dates on ${labelPosition(positions[idx]!)} → ${start ?? "?"}–${end ?? (positions[idx]!.is_current ? "present" : "?")}.`,
+          `Fixed dates on ${labelPosition(positions[idx]!)} → ${start ?? "?"}–${end ?? (isCurrent ? "present" : "?")}.`,
         );
       }
     }
@@ -228,10 +232,15 @@ export function applyExperienceUpdates(
     if (experience.set_current?.length) {
       for (const op of experience.set_current) {
         const idx = resolveOneIndex(positions, op, "set_current");
+        const before = positions[idx]!;
+        const nextEnd = op.currently_work_here ? null : before.end_date ?? null;
+        if (Boolean(before.is_current) === op.currently_work_here && String(before.end_date ?? "") === String(nextEnd ?? "")) {
+          continue;
+        }
         positions[idx] = {
-          ...positions[idx],
+          ...before,
           is_current: op.currently_work_here,
-          end_date: op.currently_work_here ? null : positions[idx]!.end_date ?? null,
+          end_date: nextEnd,
         };
         changed = true;
         summary.push(

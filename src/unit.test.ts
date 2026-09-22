@@ -492,6 +492,28 @@ describe("waas profile updates", () => {
     assert.ok(result.summary.some((s) => /Removed by match/i.test(s)));
   });
 
+  it("skips no-op fix_dates and set_current", () => {
+    const result = applyExperienceUpdates(
+      [
+        {
+          id: 1,
+          employer_name_other: "Wells Fargo",
+          title: "Intern",
+          start_date: "2026-06-01",
+          end_date: "2026-08-01",
+          is_current: false,
+        },
+      ],
+      [],
+      {
+        fix_dates: [{ match: "Wells Fargo", start_date: "2026-06", end_date: "2026-08" }],
+        set_current: [{ match: "Wells Fargo", currently_work_here: false }],
+      },
+    );
+    assert.equal(result.changed, false);
+    assert.deepEqual(result.summary, []);
+  });
+
   it("builds share payload without clearing companion fields", () => {
     const result = applyShareUpdate(
       {
@@ -724,5 +746,32 @@ The project I'm proudest of is a brain-hemorrhage CNN with 96% validation accura
     assert.equal(built.update_payload.experience?.positions?.length, 2);
     assert.ok(built.remove_list.includes("Child Wasting"));
     assert.equal(built.update_payload.skills?.items?.length, 3);
+  });
+
+  it("parses October From-dates and From-only months (no bare-to false match)", () => {
+    const parsed = parseOptimizedWaasDraft(`
+## Suggested Experience order
+
+### 1. F1 Corner Analysis — Independent Project
+- From: **October 2025** → check current if still updating
+- Paste:
+
+\`\`\`
+F1 telemetry app.
+\`\`\`
+
+### Optional 2: SQL Lineage Engine — Independent Project
+- From: **December 2025**
+- Paste:
+
+\`\`\`
+AST lineage engine.
+\`\`\`
+`);
+    assert.equal(parsed.experience[0]?.company, "F1 Corner Analysis");
+    assert.equal(parsed.experience[0]?.start_date, "2025-10");
+    assert.equal(parsed.experience[0]?.currently_work_here, true);
+    assert.equal(parsed.experience[1]?.company, "SQL Lineage Engine");
+    assert.equal(parsed.experience[1]?.start_date, "2025-12");
   });
 });
