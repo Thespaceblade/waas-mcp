@@ -205,12 +205,17 @@ export function buildAlgoliaFilters(filters: WaasSearchFilters): string {
 function mapAlgoliaHit(job: Record<string, unknown>): SearchHit {
   const company = (job.company as Record<string, unknown> | undefined) ?? {};
   const id = String(job.id ?? job.objectID ?? "");
-  const slug = String(company.slug ?? job.company_slug ?? "");
+  const slug =
+    String(company.slug ?? job.company_slug ?? "") ||
+    slugFromSearchPath(String(job.search_path ?? ""));
   const jobTypeRaw = String(job.job_type ?? job.pretty_job_type ?? "");
+  const locations = Array.isArray(job.locations_for_search)
+    ? job.locations_for_search.map(String)
+    : [];
   const location =
     String(
       job.pretty_location_or_remote ??
-        (Array.isArray(job.locations_for_search) ? job.locations_for_search[0] : "") ??
+        locations[locations.length - 1] ??
         job.location ??
         "",
     ) || "";
@@ -237,6 +242,11 @@ function mapAlgoliaHit(job: Record<string, unknown>): SearchHit {
         ? String(job.salary)
         : null,
   };
+}
+
+function slugFromSearchPath(path: string): string {
+  const match = path.match(/\/companies\/([^/?#]+)/i);
+  return match?.[1] ?? "";
 }
 
 function prettyJobType(value: string): string {
