@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildJobsSearchUrl, filterHitsByJobType, matchesJobType } from "./filters.js";
+import { buildAlgoliaFilters } from "./browser/search.js";
 import { detectExternalApply } from "./external-detect.js";
 import { customQuestionsToFields } from "./questions.js";
 import {
@@ -66,7 +67,18 @@ describe("filterHitsByJobType", () => {
 
   it("matches fulltime labels", () => {
     assert.equal(matchesJobType("Fulltime", "fulltime"), true);
+    assert.equal(matchesJobType("Full-time", "fulltime"), true);
+    assert.equal(matchesJobType("Full time", "fulltime"), true);
     assert.equal(matchesJobType("Intern", "fulltime"), false);
+  });
+});
+
+describe("buildAlgoliaFilters", () => {
+  it("builds role and job_type filters", () => {
+    assert.equal(
+      buildAlgoliaFilters({ role: "eng", job_type: "intern" }),
+      '(role:eng) AND (job_type:"intern")',
+    );
   });
 });
 
