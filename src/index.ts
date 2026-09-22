@@ -5,7 +5,7 @@ import { registerWaasTools } from "./tools.js";
 
 const server = new McpServer({
   name: "waas-mcp",
-  version: "0.2.15",
+  version: "0.2.16",
 });
 
 registerWaasTools(server);
