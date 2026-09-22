@@ -99,6 +99,58 @@ export function parseHumanMonth(value: string | null | undefined): string | null
   return null;
 }
 
+/** Month token only — avoids bare `to` matching inside "October". */
+const MONTH_DATE_RE = String.raw`(?:[A-Za-z]+\s+\d{4}|\d{4}-\d{2}(?:-\d{2})?)`;
+
+function applyExperienceFromLine(current: DraftExperience, line: string): boolean {
+  if (!/^-?\s*From:/i.test(line)) return false;
+  const rest = line.replace(/^-?\s*From:\s*/i, "");
+
+  const range = rest.match(
+    new RegExp(
+      `^\\*{0,2}(${MONTH_DATE_RE})\\*{0,2}\\s*(?:→|->|\\bto\\b)\\s*(?:To:\\s*)?\\*{0,2}(.+?)\\*{0,2}\\s*(?:\\(|$)`,
+      "i",
+    ),
+  );
+  if (range) {
+    current.start_date = parseHumanMonth(range[1]);
+    const endRaw = range[2]!.trim().replace(/\*+/g, "");
+    if (/present|current|now/i.test(endRaw) || /currently work here/i.test(line)) {
+      current.currently_work_here = true;
+      current.end_date = null;
+    } else {
+      current.end_date = parseHumanMonth(endRaw);
+      current.currently_work_here = false;
+    }
+    if (/currently work here/i.test(line) && !/do NOT mark current|uncheck current/i.test(line)) {
+      current.currently_work_here = true;
+      current.end_date = null;
+    }
+    if (/do NOT mark current|uncheck current/i.test(line)) {
+      current.currently_work_here = false;
+    }
+    if (/check current/i.test(line) && !/uncheck|do NOT/i.test(line)) {
+      current.currently_work_here = true;
+      current.end_date = null;
+    }
+    return true;
+  }
+
+  const only = rest.match(new RegExp(`^\\*{0,2}(${MONTH_DATE_RE})\\*{0,2}\\s*(.*)$`, "i"));
+  if (only) {
+    current.start_date = parseHumanMonth(only[1]);
+    if (/currently work here/i.test(line) && !/uncheck|do NOT/i.test(line)) {
+      current.currently_work_here = true;
+      current.end_date = null;
+    } else if (/check current/i.test(line) && !/uncheck|do NOT/i.test(line)) {
+      current.currently_work_here = true;
+      current.end_date = null;
+    }
+    return true;
+  }
+  return false;
+}
+
 export function parseOptimizedWaasDraft(text: string): ParsedProfileDraft {
   const notes: string[] = [];
   const remove: string[] = [];
@@ -205,40 +257,7 @@ export function parseOptimizedWaasDraft(text: string): ParsedProfileDraft {
         current.location = location[1]!.replace(/\s*\(.*\)\s*$/, "").trim();
         continue;
       }
-      const fromTo = line.match(
-        /^-?\s*From:\s*\*?\*?(.+?)\*?\*?\s*(?:→|->|to)\s*(?:To:\s*)?\*?\*?(.+?)\*?\*?\s*(?:\(|$)/i,
-      );
-      if (fromTo) {
-        current.start_date = parseHumanMonth(fromTo[1]);
-        const endRaw = fromTo[2]!.trim();
-        if (/present|current|now/i.test(endRaw) || /currently work here/i.test(line)) {
-          current.currently_work_here = true;
-          current.end_date = null;
-        } else {
-          current.end_date = parseHumanMonth(endRaw);
-          current.currently_work_here = false;
-        }
-        if (/currently work here/i.test(line) && !/do NOT mark current|uncheck current/i.test(line)) {
-          current.currently_work_here = true;
-          current.end_date = null;
-        }
-        if (/do NOT mark current|uncheck current/i.test(line)) {
-          current.currently_work_here = false;
-        }
-        continue;
-      }
-      const fromOnly = line.match(/^-?\s*From:\s*\*?\*?(.+?)\*?\*?\s*(?:→|->)?\s*(.*)$/i);
-      if (fromOnly) {
-        current.start_date = parseHumanMonth(fromOnly[1]);
-        if (/currently work here/i.test(line) && !/uncheck|do NOT/i.test(line)) {
-          current.currently_work_here = true;
-          current.end_date = null;
-        } else if (/check current/i.test(line)) {
-          current.currently_work_here = true;
-          current.end_date = null;
-        }
-        continue;
-      }
+      if (applyExperienceFromLine(current, line)) continue;
     }
 
     if (section === "remove") {
@@ -257,7 +276,12 @@ export function parseOptimizedWaasDraft(text: string): ParsedProfileDraft {
         if (/data science/i.test(line)) education.field_of_study = "Data Science";
         if (/computer science/i.test(line)) education.field_of_study = "Computer Science";
       } else if (/from:/i.test(line)) {
-        const m = line.match(/From:\s*\*?\*?(.+?)\*?\*?\s*(?:→|->|to)\s*(?:To:\s*)?\*?\*?(.+?)(?:\s*\(|$)/i);
+        const m = line.match(
+          new RegExp(
+            `From:\\s*\\*{0,2}(${MONTH_DATE_RE})\\*{0,2}\\s*(?:→|->|\\bto\\b)\\s*(?:To:\\s*)?\\*{0,2}(${MONTH_DATE_RE})`,
+            "i",
+          ),
+        );
         if (m) {
           education.start_date = parseHumanMonth(m[1]);
           education.end_date = parseHumanMonth(m[2]);
